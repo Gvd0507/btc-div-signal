@@ -393,7 +393,7 @@ let signals  = [];
 
 async function fetchCandles(symbol, limit=60) {
   const url = `https://min-api.cryptocompare.com/data/v2/histohour?fsym=${symbol}&tsym=USDT&limit=${limit}&api_key=${CC_KEY}`;
-  const r = await fetch(url);
+  const r = await fetch(url, {cache:'no-store'});
   if(!r.ok) throw new Error(`HTTP ${r.status} for ${symbol}`);
   const d = await r.json();
   if(d.Response !== 'Success') throw new Error(`CC error ${symbol}: ${d.Message}`);
@@ -513,7 +513,8 @@ async function runScan() {
     let livePrice = btcCandles[btcCandles.length-1].c;
     let liveVol   = btcCandles[btcCandles.length-1].v;
     try {
-      const liveR = await fetch(`https://min-api.cryptocompare.com/data/pricemultifull?fsyms=BTC&tsyms=USDT&api_key=${CC_KEY}`);
+      // cache:'no-store' forces a fresh response every scan — prevents browser caching stale price
+      const liveR = await fetch(`https://min-api.cryptocompare.com/data/pricemultifull?fsyms=BTC&tsyms=USDT&api_key=${CC_KEY}`, {cache:'no-store'});
       const liveD = await liveR.json();
       const raw   = liveD?.RAW?.BTC?.USDT;
       if(raw) {
