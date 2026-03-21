@@ -398,8 +398,12 @@ async function fetchCandles(symbol, limit=60) {
   const d = await r.json();
   if(d.Response !== 'Success') throw new Error(`CC error ${symbol}: ${d.Message}`);
   const rows = d.Data.Data.filter(c => c.close > 0);
-  if(rows.length < 10) throw new Error(`Only ${rows.length} candles for ${symbol}`);
-  return rows.map(c => ({ t:c.time, o:c.open, h:c.high, l:c.low, c:c.close, v:c.volumefrom }));
+  // Slice off the last candle — it is the current incomplete hour.
+  // An incomplete candle has near-zero high-low range, which collapses ADX to 0
+  // and distorts correlation, beta, and volume z-score calculations.
+  const complete = rows.length > 1 ? rows.slice(0, -1) : rows;
+  if(complete.length < 10) throw new Error(`Only ${complete.length} complete candles for ${symbol}`);
+  return complete.map(c => ({ t:c.time, o:c.open, h:c.high, l:c.low, c:c.close, v:c.volumefrom }));
 }
 
 function logRet(candles) {

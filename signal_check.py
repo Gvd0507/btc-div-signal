@@ -54,8 +54,10 @@ def get_candles(symbol, limit=60):
                 result.append({'t': t, 'o': o, 'h': h, 'l': l, 'c': cl, 'v': v})
             except (KeyError, ValueError, TypeError):
                 continue
-        print(f"  {symbol}: {len(result)} candles")
-        return result
+        # Drop last row — current incomplete candle distorts ADX, beta, vol z-score
+        complete = result[:-1] if len(result) > 1 else result
+        print(f"  {symbol}: {len(complete)} complete candles")
+        return complete
     except Exception as e:
         print(f"get_candles error {symbol}: {e}")
         return []
