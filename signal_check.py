@@ -1,62 +1,60 @@
 import requests, math, os, time
 
-TELEGRAM_TOKEN = os.environ['TELEGRAM_TOKEN']
-TELEGRAM_CHAT  = os.environ['TELEGRAM_CHAT']
-COINS  = ['ETHUSDT','SOLUSDT','BNBUSDT','AVAXUSDT','MATICUSDT','ARBUSDT']
-MAINT  = 0.004
-MIN_CANDLES = 30  # minimum candles needed for any calculation
+TELEGRAM_TOKEN     = os.environ['TELEGRAM_TOKEN']
+TELEGRAM_CHAT      = os.environ['TELEGRAM_CHAT']
+CC_KEY             = os.environ['CRYPTO_COMPARE_KEY']
+
+COINS       = ['ETH','SOL','BNB','AVAX','MATIC','ARB']
+MAINT       = 0.004
+MIN_CANDLES = 30
 
 # ─── TELEGRAM ────────────────────────────────────────────────────────────────
 
 def send(msg):
     try:
-        requests.post(
+        r = requests.post(
             f'https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage',
             json={'chat_id': TELEGRAM_CHAT, 'text': msg, 'parse_mode': 'HTML'},
-            timeout=10
+            timeout=15
         )
+        print(f"Telegram: {r.status_code}")
     except Exception as e:
         print(f"Telegram error: {e}")
 
 # ─── DATA ────────────────────────────────────────────────────────────────────
 
-def get_candles(symbol, interval='60', limit=60):
-    # Uses Bybit v5 linear perpetuals API — works from cloud IPs unlike Binance
-    # interval: '60' = 1 hour, '5' = 5 min, '1' = 1 min
+def get_candles(symbol, limit=60):
     try:
         r = requests.get(
-            'https://api.bybit.com/v5/market/kline',
+            'https://min-api.cryptocompare.com/data/v2/histohour',
             params={
-                'category': 'linear',
-                'symbol':   symbol,
-                'interval': interval,
-                'limit':    limit
+                'fsym':    symbol,
+                'tsym':    'USDT',
+                'limit':   limit,
+                'api_key': CC_KEY
             },
-            timeout=15
+            timeout=20
         )
         r.raise_for_status()
         data = r.json()
-        if data.get('retCode') != 0:
-            print(f"Bybit error for {symbol}: {data.get('retMsg')}")
+        if data.get('Response') != 'Success':
+            print(f"CryptoCompare error {symbol}: {data.get('Message','unknown')}")
             return []
-        # Bybit returns newest first — reverse so oldest is index 0
-        rows = data['result']['list']
-        rows = list(reversed(rows))
         result = []
-        for c in rows:
+        for c in data['Data']['Data']:
             try:
-                # Bybit format: [startTime, open, high, low, close, volume, turnover]
-                t  = int(c[0])
-                o  = float(c[1])
-                h  = float(c[2])
-                l  = float(c[3])
-                cl = float(c[4])
-                v  = float(c[5])
-                if h < l or cl <= 0 or v < 0:
+                t  = int(c['time'])
+                o  = float(c['open'])
+                h  = float(c['high'])
+                l  = float(c['low'])
+                cl = float(c['close'])
+                v  = float(c['volumefrom'])
+                if cl <= 0 or h < l or v < 0:
                     continue
                 result.append({'t': t, 'o': o, 'h': h, 'l': l, 'c': cl, 'v': v})
-            except (ValueError, TypeError, IndexError):
+            except (KeyError, ValueError, TypeError):
                 continue
+        print(f"  {symbol}: {len(result)} candles")
         return result
     except Exception as e:
         print(f"get_candles error {symbol}: {e}")
@@ -65,282 +63,222 @@ def get_candles(symbol, interval='60', limit=60):
 # ─── MATH ────────────────────────────────────────────────────────────────────
 
 def log_ret(candles):
-    if len(candles) < 2:
-        return []
     result = []
     for i in range(1, len(candles)):
         try:
-            prev = candles[i-1]['c']
-            curr = candles[i]['c']
-            if prev > 0 and curr > 0:
-                result.append(math.log(curr / prev))
-            else:
-                result.append(0.0)
+            p, c = candles[i-1]['c'], candles[i]['c']
+            result.append(math.log(c / p) if p > 0 and c > 0 else 0.0)
         except Exception:
             result.append(0.0)
     return result
 
-def rolling_beta(btc_r, alt_r, w=4):
-    if len(btc_r) < w or len(alt_r) < w:
-        return 0.0
-    b = btc_r[-w:]
-    a = alt_r[-w:]
-    bm = sum(b) / w
-    am = sum(a) / w
-    cov = sum((b[i] - bm) * (a[i] - am) for i in range(w))
-    var = sum((b[i] - bm) ** 2 for i in range(w))
-    return cov / var if var != 0 else 0.0
-
-def rolling_corr(btc_r, alt_r, w=24):
+def rolling_beta(btc_r, alt_r, w):
     w = min(w, len(btc_r), len(alt_r))
-    if w < 4:
+    if w < 2:
         return 0.0
-    b = btc_r[-w:]
-    a = alt_r[-w:]
-    bm = sum(b) / w
-    am = sum(a) / w
-    num = sum((b[i] - bm) * (a[i] - am) for i in range(w))
-    db  = sum((b[i] - bm) ** 2 for i in range(w))
-    da  = sum((a[i] - am) ** 2 for i in range(w))
-    if db == 0 or da == 0:
-        return 0.0
-    return num / math.sqrt(db * da)
+    b, a   = btc_r[-w:], alt_r[-w:]
+    bm, am = sum(b)/w, sum(a)/w
+    cov = sum((b[i]-bm)*(a[i]-am) for i in range(w))
+    var = sum((b[i]-bm)**2 for i in range(w))
+    return cov/var if var != 0 else 0.0
 
 def compute_adx(candles, p=14):
-    # Need at least p+1 candles
-    if len(candles) < p + 1:
+    if len(candles) < p + 2:
         return 20.0
-    tr_sum = 0.0
-    dm_p   = 0.0
-    dm_m   = 0.0
-    # Use last p candles, each needing its previous candle
-    start = len(candles) - p
-    for i in range(start, len(candles)):
-        c    = candles[i]
-        prev = candles[i - 1]
-        tr   = max(
-            c['h'] - c['l'],
-            abs(c['h'] - prev['c']),
-            abs(c['l'] - prev['c'])
-        )
+    tr_sum = dm_p = dm_m = 0.0
+    for i in range(len(candles)-p, len(candles)):
+        c, prev = candles[i], candles[i-1]
+        tr   = max(c['h']-c['l'], abs(c['h']-prev['c']), abs(c['l']-prev['c']))
         up   = c['h'] - prev['h']
         down = prev['l'] - c['l']
         tr_sum += tr
-        if up > down and up > 0:
-            dm_p += up
-        if down > up and down > 0:
-            dm_m += down
-    if tr_sum == 0:
-        return 20.0
-    di_p = 100.0 * dm_p / tr_sum
-    di_m = 100.0 * dm_m / tr_sum
+        if up > down and up > 0:   dm_p += up
+        if down > up and down > 0: dm_m += down
+    if tr_sum == 0: return 20.0
+    di_p  = 100.0 * dm_p / tr_sum
+    di_m  = 100.0 * dm_m / tr_sum
     denom = di_p + di_m
-    if denom == 0:
-        return 20.0
-    return 100.0 * abs(di_p - di_m) / denom
+    return 100.0 * abs(di_p-di_m)/denom if denom else 20.0
 
 def swing_low(candles, n=3):
-    # Need at least 2n+1 candles for a valid swing low
-    if len(candles) < 2 * n + 1:
+    if len(candles) < 2*n+1:
         return None
-    # Search from most recent backwards, confirming n candles after
-    # Stop at index n so there's always n candles before
-    for i in range(len(candles) - n - 1, n - 1, -1):
+    for i in range(len(candles)-n-1, n-1, -1):
         c = candles[i]
-        before_ok = all(candles[j]['l'] > c['l'] for j in range(i - n, i))
-        after_ok  = all(
-            candles[j]['l'] > c['l']
-            for j in range(i + 1, min(i + n + 1, len(candles)))
-        )
-        if before_ok and after_ok:
+        if (all(candles[j]['l'] > c['l'] for j in range(i-n, i)) and
+            all(candles[j]['l'] > c['l'] for j in range(i+1, min(i+n+1, len(candles))))):
             return {'price': c['l'], 'idx': i}
     return None
 
-def btc_swing_forming(candles, n=3):
-    # A potential swing low that has n bars before but fewer than n bars after
-    # (not yet confirmed) — fires the early alert
-    if len(candles) < n + 2:
+def swing_forming(candles, n=3):
+    if len(candles) < n+2:
         return None
-    # Check the candle at position len-2 (second to last)
-    # It has n bars before and 1 bar after — potential forming swing
-    for offset in range(1, n + 1):
-        i = len(candles) - 1 - offset
-        if i < n:
-            continue
+    for offset in range(1, n):
+        i = len(candles)-1-offset
+        if i < n: continue
         c = candles[i]
-        before_ok = all(candles[j]['l'] > c['l'] for j in range(max(0, i - n), i))
-        # Only 'offset' bars after exist — not yet fully confirmed
-        after_existing = all(candles[j]['l'] > c['l'] for j in range(i + 1, len(candles)))
-        if before_ok and after_existing and offset < n:
+        if (all(candles[j]['l'] > c['l'] for j in range(max(0,i-n), i)) and
+            all(candles[j]['l'] > c['l'] for j in range(i+1, len(candles)))):
             return c['l']
     return None
 
 def vol_zscore(candles, w=24):
-    # Need w+1 candles: w for the distribution, 1 for current
-    if len(candles) < w + 1:
-        w = len(candles) - 1
-    if w < 2:
-        return 0.0
-    vols = [c['v'] for c in candles[-(w + 1):-1]]
-    if not vols:
-        return 0.0
-    mean = sum(vols) / len(vols)
-    var  = sum((v - mean) ** 2 for v in vols) / len(vols)
-    std  = math.sqrt(var) if var > 0 else 0.0
-    if std == 0:
-        return 0.0
-    return (candles[-1]['v'] - mean) / std
+    w = min(w, len(candles)-1)
+    if w < 2: return 0.0
+    vols = [c['v'] for c in candles[-(w+1):-1]]
+    if not vols: return 0.0
+    mean = sum(vols)/len(vols)
+    std  = math.sqrt(sum((v-mean)**2 for v in vols)/len(vols))
+    return (candles[-1]['v']-mean)/std if std else 0.0
 
 # ─── MAIN SCAN ───────────────────────────────────────────────────────────────
 
-print("Fetching BTC data...")
-btc = get_candles('BTCUSDT', limit=60)
+print("=== BTC-Alt Divergence Scan ===")
+print("Fetching BTC...")
+btc = get_candles('BTC', limit=60)
 
 if len(btc) < MIN_CANDLES:
-    send("⚠️ Signal scanner error: Could not fetch enough BTC candles from Binance.")
-    print(f"Only got {len(btc)} BTC candles, need {MIN_CANDLES}. Exiting.")
+    send(
+        f"⚠️ <b>Scanner error</b>\n"
+        f"Got only {len(btc)} BTC candles from CryptoCompare.\n"
+        f"Check that CRYPTO_COMPARE_KEY secret is set correctly."
+    )
+    print(f"Only {len(btc)} BTC candles. Exiting.")
     exit(0)
 
 btc_r       = log_ret(btc)
 btc_adx     = compute_adx(btc)
 regime      = 'RANGING' if btc_adx < 25 else 'TRENDING'
 btc_swing   = swing_low(btc)
-btc_forming = btc_swing_forming(btc)
+btc_forming = swing_forming(btc)
 btc_vz      = vol_zscore(btc)
 
-print(f"BTC: {len(btc)} candles | ADX {btc_adx:.1f} | Regime {regime}")
-print(f"BTC swing confirmed: {btc_swing is not None} | Forming: {btc_forming is not None}")
+print(f"BTC price=${btc[-1]['c']:,.2f} ADX={btc_adx:.1f} Regime={regime}")
+print(f"Swing confirmed={btc_swing is not None} Forming={btc_forming is not None}")
 
-# ─── ALERT 1: BTC SWING FORMING (early warning) ──────────────────────────────
+# ─── ALERT 1: EARLY WARNING ───────────────────────────────────────────────────
 
 if btc_forming is not None and regime == 'RANGING':
-    print("BTC swing forming — sending early alert...")
+    print("Swing forming — building early alert...")
     watching = []
     for coin in COINS:
         try:
-            alt       = get_candles(coin, limit=60)
-            if len(alt) < MIN_CANDLES:
-                continue
-            alt_swing = swing_low(alt)
-            last_low  = alt[-1]['l']
-            held      = alt_swing is not None and last_low > alt_swing['price']
-            label     = 'holding ✓' if held else 'followed BTC ✗'
-            watching.append(f"  {coin.replace('USDT','')} — {label}")
+            alt  = get_candles(coin, limit=60)
+            time.sleep(0.4)
+            if len(alt) < MIN_CANDLES: continue
+            sw   = swing_low(alt)
+            held = sw is not None and alt[-1]['l'] > sw['price']
+            watching.append(f"  {coin}/USDT — {'holding ✓' if held else 'followed BTC ✗'}")
         except Exception as e:
             print(f"  Watch error {coin}: {e}")
-
     watch_text = "\n".join(watching) if watching else "  (no data)"
-    msg = (
+    send(
         f"⚠️ <b>WATCH — BTC swing low forming</b>\n\n"
         f"BTC potential low: ${btc_forming:,.4f}\n"
-        f"Waiting for 3-candle confirmation (~3h)\n"
-        f"Regime: {regime} (ADX {btc_adx:.0f})\n\n"
-        f"Alt status:\n{watch_text}\n\n"
-        f"<i>Do not enter yet. Confirmation alert will follow if all conditions met.</i>"
+        f"Regime: RANGING (ADX {btc_adx:.0f})\n"
+        f"Waiting ~3h for confirmation\n\n"
+        f"Alt watch:\n{watch_text}\n\n"
+        f"<i>Do not enter yet. Confirmation alert follows.</i>"
     )
-    send(msg)
     print("Early alert sent.")
 
-# ─── ALERT 2: FULL CONFIRMED SIGNALS ─────────────────────────────────────────
+# ─── ALERT 2: FULL CONFIRMED SIGNAL ──────────────────────────────────────────
 
 if btc_swing is not None and regime == 'RANGING':
-    print("BTC swing confirmed — scanning alts for divergence signals...")
+    print(f"\nSwing confirmed at ${btc_swing['price']:.4f} — scanning alts...")
 
     for coin in COINS:
         try:
+            print(f"\nScanning {coin}...")
             alt = get_candles(coin, limit=60)
+            time.sleep(0.4)
+
             if len(alt) < MIN_CANDLES:
-                print(f"  {coin}: not enough candles ({len(alt)}), skipping")
+                print(f"  Only {len(alt)} candles, skipping")
                 continue
 
-            alt_r = log_ret(alt)
-            if len(alt_r) < 4:
+            alt_r   = log_ret(alt)
+            n       = min(len(btc_r), len(alt_r))
+            if n < 4:
+                print(f"  Return data too short ({n}), skipping")
                 continue
 
-            n        = min(len(btc_r), len(alt_r))
-            beta4h   = rolling_beta(btc_r[-n:], alt_r[-n:], min(4, n))
-            beta24h  = rolling_beta(btc_r[-n:], alt_r[-n:], min(24, n))
-            vz       = vol_zscore(alt)
-            alt_sw   = swing_low(alt)
-            alt_last = alt[-1]
+            beta4h  = rolling_beta(btc_r[-n:], alt_r[-n:], 4)
+            beta24h = rolling_beta(btc_r[-n:], alt_r[-n:], min(24, n))
+            vz      = vol_zscore(alt)
+            alt_sw  = swing_low(alt)
+            last    = alt[-1]
 
-            # Five conditions
             c1 = beta4h < 0.3 and beta24h > 0.8
-            c3 = alt_sw is not None and alt_last['l'] > alt_sw['price']
+            c3 = alt_sw is not None and last['l'] > alt_sw['price']
             c4 = vz > 1.0
-            c5 = btc_vz < 0.5
 
-            print(f"  {coin}: beta4h={beta4h:.2f} beta24h={beta24h:.2f} vz={vz:.2f} c1={c1} c3={c3} c4={c4}")
+            print(f"  beta4h={beta4h:.3f} beta24h={beta24h:.3f} vz={vz:.2f} c1={c1} c3={c3} c4={c4}")
 
             if not (c1 and c3 and c4):
+                print(f"  Conditions not met, skipping")
                 continue
 
-            # Confidence score
-            beta_s = min((0.3 - beta4h) / 0.3, 1.0) * 30 if beta4h < 0.3 else 0
-            oi_s   = min((vz - 1.0) / 2.0, 1.0) * 30 if vz > 1.0 else 0
-            reg_s  = 25  # already confirmed ranging
-            fund_s = 15  # neutral default
-            conf   = beta_s + oi_s + reg_s + fund_s
+            beta_s = min((0.3-beta4h)/0.3, 1.0)*30 if beta4h < 0.3 else 0
+            oi_s   = min((vz-1.0)/2.0, 1.0)*30 if vz > 1.0 else 0
+            conf   = beta_s + oi_s + 25 + 15
             tier   = 'A' if conf >= 75 else 'B' if conf >= 55 else 'C'
 
             if tier == 'C':
-                print(f"  {coin}: tier C (conf {conf:.0f}), skipping")
+                print(f"  Tier C (conf={conf:.0f}), skipping")
                 continue
 
-            # Trade levels
-            entry     = alt_last['c']
+            entry     = last['c']
             stop      = alt_sw['price'] * 0.995
             stop_dist = (entry - stop) / entry
 
             if stop_dist <= 0 or stop >= entry:
-                print(f"  {coin}: invalid stop ({stop:.4f} >= entry {entry:.4f}), skipping")
+                print(f"  Invalid stop, skipping")
                 continue
 
-            btc_mag = abs(btc[-1]['c'] - btc_swing['price']) / btc_swing['price'] if btc_swing['price'] > 0 else 0
-            target  = entry + max(stop_dist * entry * 1.5, entry * btc_mag * 1.5)
-            rr      = (target - entry) / (entry - stop)
+            btc_mag    = abs(btc[-1]['c']-btc_swing['price'])/btc_swing['price'] if btc_swing['price'] > 0 else 0
+            target     = entry + max(stop_dist*entry*1.5, entry*btc_mag*1.5)
+            rr         = (target-entry)/(entry-stop)
 
             if rr < 1.5:
-                print(f"  {coin}: R:R {rr:.2f} < 1.5, skipping")
+                print(f"  R:R={rr:.2f} < 1.5, skipping")
                 continue
 
-            # Leverage
             ideal_lev = 0.25 / stop_dist
             max_safe  = int(1.0 / (stop_dist + MAINT))
             lev       = min(int(ideal_lev), max_safe, 100)
 
             if lev < 1:
-                print(f"  {coin}: leverage < 1, skipping")
+                print(f"  Leverage < 1, skipping")
                 continue
 
             icon = '🟢' if tier == 'A' else '🔵'
-            msg = (
-                f"{icon} <b>SIGNAL CONFIRMED — {coin.replace('USDT','')}USDT LONG</b>\n\n"
+            send(
+                f"{icon} <b>SIGNAL — {coin}/USDT LONG</b>\n\n"
                 f"Score: <b>{tier} — {conf:.0f}/100</b>\n"
-                f"{'─' * 30}\n"
+                f"{'─'*28}\n"
                 f"Entry      ${entry:.4f}\n"
                 f"Stop       ${stop:.4f}  (−{stop_dist*100:.2f}%)\n"
                 f"Target     ${target:.4f}  (+{(target-entry)/entry*100:.2f}%)\n"
-                f"Leverage   {lev}x  (at 25% risk)\n"
+                f"Leverage   {lev}x  (25% risk)\n"
                 f"R:R        1 : {rr:.2f}\n"
-                f"{'─' * 30}\n"
+                f"{'─'*28}\n"
                 f"Regime     RANGING ✓  (ADX {btc_adx:.0f})\n"
-                f"OI zscore  {vz:.2f}σ ✓\n"
-                f"Beta 4h    {beta4h:.2f} ✓  (baseline {beta24h:.2f})\n"
-                f"{'─' * 30}\n"
-                f"<i>Expires in 4h. Invalidates below ${stop:.4f}</i>"
+                f"Vol score  {vz:.2f}σ ✓\n"
+                f"Beta 4h    {beta4h:.3f} ✓  (baseline {beta24h:.2f})\n"
+                f"{'─'*28}\n"
+                f"<i>Expires 4h. Invalidates below ${stop:.4f}</i>"
             )
-            send(msg)
-            print(f"  {coin}: signal sent — tier {tier} conf {conf:.0f}")
+            print(f"  Signal sent — {tier} tier conf={conf:.0f} lev={lev}x")
             time.sleep(1)
 
         except Exception as e:
-            print(f"  {coin}: unexpected error — {e}")
+            print(f"  Unexpected error {coin}: {e}")
             continue
 
 elif btc_swing is None:
-    print("No confirmed BTC swing low — no signals to evaluate.")
+    print("\nNo confirmed BTC swing low.")
 elif regime == 'TRENDING':
-    print(f"BTC trending (ADX {btc_adx:.1f}) — signals filtered out.")
+    print(f"\nBTC trending (ADX {btc_adx:.1f}) — signals filtered.")
 
-print("Scan complete.")
+print("\n=== Scan complete ===")
