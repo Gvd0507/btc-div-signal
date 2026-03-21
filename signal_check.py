@@ -13,10 +13,24 @@ def send(msg):
 
 def get_candles(symbol, interval='1h', limit=50):
     r = requests.get(
-        f'https://fapi.binance.com/fapi/v1/klines',
+        'https://fapi.binance.com/fapi/v1/klines',
         params={'symbol': symbol, 'interval': interval, 'limit': limit}
     )
-    return [{'t':c[0],'o':float(c[1]),'h':float(c[2]),'l':float(c[3]),'c':float(c[4]),'v':float(c[5])} for c in r.json()]
+    data = r.json()
+    result = []
+    for c in data:
+        try:
+            result.append({
+                't': int(c[0]),
+                'o': float(c[1]),
+                'h': float(c[2]),
+                'l': float(c[3]),
+                'c': float(c[4]),
+                'v': float(c[5])
+            })
+        except (ValueError, TypeError):
+            continue  # skip any header or malformed row
+    return result
 
 def log_ret(candles):
     return [math.log(candles[i]['c']/candles[i-1]['c']) for i in range(1,len(candles))]
