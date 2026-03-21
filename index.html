@@ -499,20 +499,36 @@ async function runScan() {
   }
 
   try {
+    // Fetch complete candles for all signal calculations (incomplete last candle already stripped)
     const btcCandles = await fetchCandles(BTC, 60);
     btcData = btcCandles;
     const btcRet   = logRet(btcCandles);
     const btcAdxV  = computeAdx(btcCandles);
     const btcSwing = swingLow(btcCandles);
     const btcVz    = volZscore(btcCandles);
-    const last     = btcCandles[btcCandles.length-1];
-    const prev     = btcCandles[btcCandles.length-2];
-    const chg      = ((last.c-prev.c)/prev.c*100).toFixed(2);
     const regime   = btcAdxV < 25 ? 'RANGING' : 'TRENDING';
 
-    document.getElementById('btcPrice').textContent  = '$'+last.c.toLocaleString(undefined,{maximumFractionDigits:0});
+    // Fetch live price separately — gives real-time price + current-hour volume
+    // CryptoCompare pricemultifull returns live tick data updated every ~10 seconds
+    let livePrice = btcCandles[btcCandles.length-1].c;
+    let liveVol   = btcCandles[btcCandles.length-1].v;
+    try {
+      const liveR = await fetch(`https://min-api.cryptocompare.com/data/pricemultifull?fsyms=BTC&tsyms=USDT&api_key=${CC_KEY}`);
+      const liveD = await liveR.json();
+      const raw   = liveD?.RAW?.BTC?.USDT;
+      if(raw) {
+        livePrice = raw.PRICE;
+        liveVol   = raw.VOLUME24HOUR; // rolling 24h volume — more useful than 1h
+      }
+    } catch(e) { /* fallback to last closed candle values */ }
+
+    // 1h change: live price vs last complete candle open (the candle currently forming)
+    const lastComplete = btcCandles[btcCandles.length-1];
+    const chg = ((livePrice - lastComplete.o) / lastComplete.o * 100).toFixed(2);
+
+    document.getElementById('btcPrice').textContent  = '$'+livePrice.toLocaleString(undefined,{maximumFractionDigits:0});
     document.getElementById('btcChange').innerHTML   = `<span style="color:${chg>=0?'var(--green)':'var(--red)'}">${chg>=0?'+':''}${chg}%</span>`;
-    document.getElementById('btcVol').textContent    = last.v.toFixed(0)+' BTC';
+    document.getElementById('btcVol').textContent    = (liveVol/1000).toFixed(1)+'K BTC';
     document.getElementById('btcRegime').innerHTML   = `<span class="regime-badge ${regime==='RANGING'?'regime-ranging':'regime-trending'}">${regime} ${btcAdxV.toFixed(0)}</span>`;
 
     signals = [];
