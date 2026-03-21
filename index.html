@@ -2,322 +2,380 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BTC-Alt Divergence Signals</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>BTC-Alt Divergence</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&display=swap');
 
-  :root {
-    --bg: #0e1010;
-    --bg2: #151919;
-    --bg3: #1a2020;
-    --bg4: #1f2727;
-    --border: #2a3535;
-    --border2: #334444;
-    --text: #d4e0e0;
-    --text2: #7a9898;
-    --text3: #4a6868;
-    --green: #00c896;
-    --green-dim: #00c89622;
-    --red: #ff4d4d;
-    --red-dim: #ff4d4d18;
-    --blue: #4fa3d4;
-    --blue-dim: #4fa3d420;
-    --amber: #f0a044;
-    --amber-dim: #f0a04420;
-    --white: #eef4f4;
+:root {
+  --bg:    #0e1010;
+  --bg2:   #151919;
+  --bg3:   #1a2020;
+  --bg4:   #1f2727;
+  --bdr:   #2a3535;
+  --bdr2:  #334444;
+  --text:  #d4e0e0;
+  --text2: #7a9898;
+  --text3: #4a6868;
+  --green: #00c896;
+  --gdim:  #00c89622;
+  --red:   #ff4d4d;
+  --rdim:  #ff4d4d18;
+  --blue:  #4fa3d4;
+  --bdim:  #4fa3d420;
+  --amber: #f0a044;
+  --adim:  #f0a04420;
+  --white: #eef4f4;
+  --mono: 'IBM Plex Mono', monospace;
+  --sans: 'IBM Plex Sans', sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 14px;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow-x: hidden;
+}
+
+/* ── HEADER ─────────────────────────────────────────────────── */
+.header {
+  background: var(--bg2);
+  border-bottom: 1px solid var(--bdr);
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 200;
+  gap: 8px;
+}
+.logo { font-family: var(--mono); font-size: 12px; font-weight: 500; color: var(--green); letter-spacing: 0.06em; white-space: nowrap; }
+.header-status { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text2); min-width: 0; }
+.header-status span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); flex-shrink: 0; animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+.header-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.last-upd { font-size: 10px; color: var(--text3); font-family: var(--mono); display: none; }
+.scan-btn {
+  background: none; border: 1px solid var(--bdr2); color: var(--text2);
+  padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 11px;
+  font-family: var(--sans); transition: all 0.15s; white-space: nowrap;
+  -webkit-appearance: none;
+}
+.scan-btn:hover, .scan-btn:active { border-color: var(--green); color: var(--green); }
+
+/* ── LAYOUT ─────────────────────────────────────────────────── */
+.main {
+  display: grid;
+  grid-template-columns: 1fr 360px;
+  min-height: calc(100vh - 45px);
+  min-height: calc(100dvh - 45px);
+}
+.left-panel { padding: 16px; overflow-y: auto; border-right: 1px solid var(--bdr); }
+.right-panel { padding: 16px; overflow-y: auto; background: var(--bg2); }
+
+/* mobile tab bar */
+.mobile-tabs { display: none; }
+
+/* ── BTC BAR ─────────────────────────────────────────────────── */
+.btc-bar {
+  background: var(--bg3); border: 1px solid var(--bdr);
+  border-radius: 6px; padding: 10px 14px;
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  gap: 8px; margin-bottom: 16px;
+}
+.btc-item { display: flex; flex-direction: column; gap: 3px; }
+.btc-lbl { font-size: 9px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.08em; }
+.btc-val { font-size: 13px; font-weight: 500; font-family: var(--mono); }
+
+.regime-badge {
+  display: inline-block; padding: 2px 8px; border-radius: 3px;
+  font-size: 10px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase;
+}
+.regime-ranging { background: var(--gdim); color: var(--green); border: 1px solid #00c89640; }
+.regime-trending { background: var(--adim); color: var(--amber); border: 1px solid #f0a04440; }
+
+/* ── SECTION LABEL ───────────────────────────────────────────── */
+.sec-label {
+  font-size: 9px; font-weight: 500; color: var(--text3);
+  letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 12px;
+}
+
+/* ── SIGNAL CARDS ────────────────────────────────────────────── */
+.signal-card {
+  background: var(--bg3);
+  border: 1px solid var(--bdr);
+  border-left: 3px solid var(--blue);
+  border-radius: 0 6px 6px 0;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.signal-card:active { background: var(--bg4); }
+.signal-card.tier-a { border-left-color: var(--green); }
+.signal-card.tier-b { border-left-color: var(--blue); }
+.signal-card.tier-c { border-left-color: var(--text3); }
+
+.sig-top { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 8px; gap: 8px; }
+.sig-meta { font-size: 9px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 2px; }
+.sig-title { font-size: 15px; font-weight: 500; color: var(--white); }
+
+.tier-badge {
+  flex-shrink: 0; padding: 2px 8px; border-radius: 3px;
+  font-size: 11px; font-weight: 500; font-family: var(--mono);
+}
+.tier-a-badge { background: var(--gdim); color: var(--green); border: 1px solid #00c89650; }
+.tier-b-badge { background: var(--bdim); color: var(--blue); border: 1px solid #4fa3d450; }
+.tier-c-badge { background: #ffffff08; color: var(--text2); border: 1px solid var(--bdr); }
+
+.sig-prices { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 10px; }
+.price-item { display: flex; flex-direction: column; gap: 2px; }
+.price-lbl { font-size: 9px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; }
+.price-val { font-size: 12px; font-family: var(--mono); font-weight: 500; }
+.ev { color: var(--blue); }
+.sv { color: var(--red); }
+.tv { color: var(--green); }
+
+.sig-tags { display: flex; gap: 5px; flex-wrap: wrap; }
+.tag {
+  font-size: 9px; padding: 2px 6px; border-radius: 3px;
+  border: 1px solid var(--bdr); color: var(--text2);
+  font-family: var(--mono);
+}
+.tag-ok { border-color: #00c89640; color: var(--green); background: var(--gdim); }
+.tag-warn { border-color: #f0a04440; color: var(--amber); background: var(--adim); }
+
+.sig-btn {
+  width: 100%; margin-top: 10px; background: none;
+  border: 1px solid var(--bdr2); color: var(--text2);
+  padding: 8px; border-radius: 4px; cursor: pointer; font-size: 12px;
+  font-family: var(--sans); transition: all 0.15s; -webkit-appearance: none;
+}
+.sig-btn:hover, .sig-btn:active { border-color: var(--green); color: var(--green); background: var(--gdim); }
+.sig-btn.selected { border-color: var(--green); color: var(--green); background: var(--gdim); }
+
+.no-signals {
+  text-align: center; padding: 40px 16px; color: var(--text3);
+  border: 1px dashed var(--bdr); border-radius: 6px; font-size: 13px; line-height: 1.7;
+}
+.no-signals a { color: var(--blue); }
+
+/* ── SIZER PANEL ─────────────────────────────────────────────── */
+.sig-header {
+  background: var(--bg3); border: 1px solid var(--bdr);
+  border-left: 3px solid var(--blue); border-radius: 0 6px 6px 0;
+  padding: 10px 12px; margin-bottom: 14px;
+}
+.sig-header.tier-a { border-left-color: var(--green); }
+
+.tab-row { display: flex; border-bottom: 1px solid var(--bdr); margin-bottom: 14px; }
+.tab {
+  font-size: 12px; padding: 7px 12px; cursor: pointer;
+  color: var(--text2); border-bottom: 2px solid transparent;
+  margin-bottom: -1px; transition: all 0.15s;
+}
+.tab.active { color: var(--text); border-bottom-color: var(--green); }
+.panel { display: none; }
+.panel.active { display: block; }
+
+.inp-lbl { font-size: 9px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 5px; }
+.risk-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+.risk-box { background: var(--bg); border: 1px solid var(--bdr); border-radius: 4px; padding: 10px 10px; }
+.inp-wrap { display: flex; align-items: center; background: var(--bg); border: 1px solid var(--bdr); border-radius: 4px; margin-top: 5px; }
+.inp-wrap:focus-within { border-color: var(--bdr2); }
+.inp-pfx { padding: 0 8px; color: var(--text3); font-size: 13px; border-right: 1px solid var(--bdr); height: 34px; display: flex; align-items: center; flex-shrink: 0; }
+.inp-wrap input { background: none; border: none; outline: none; color: var(--white); font-family: var(--mono); font-size: 14px; padding: 0 8px; height: 34px; width: 100%; min-width: 0; }
+
+.slider-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+input[type=range] { -webkit-appearance: none; flex: 1; height: 3px; background: var(--bdr2); border-radius: 2px; outline: none; }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; background: var(--green); border-radius: 50%; cursor: pointer; }
+.risk-val { font-family: var(--mono); font-size: 12px; font-weight: 500; color: var(--white); min-width: 34px; text-align: right; }
+
+.pills { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 7px; }
+.pill {
+  font-size: 10px; padding: 3px 8px; border-radius: 3px;
+  border: 1px solid var(--bdr); color: var(--text2); cursor: pointer;
+  font-family: var(--mono); background: none; -webkit-appearance: none;
+}
+.pill.active { background: var(--gdim); border-color: #00c89650; color: var(--green); }
+.pill.disabled { opacity: 0.3; pointer-events: none; }
+
+.result-card { background: var(--bg); border: 1px solid var(--bdr); border-radius: 6px; padding: 12px; margin-bottom: 10px; }
+.lev-row { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+.lev-num { font-size: 30px; font-weight: 500; font-family: var(--mono); color: var(--white); }
+.lev-safe { background: var(--gdim); color: var(--green); border: 1px solid #00c89640; font-size: 10px; padding: 2px 7px; border-radius: 3px; }
+.lev-unsafe { background: var(--rdim); color: var(--red); border: 1px solid #ff4d4d40; font-size: 10px; padding: 2px 7px; border-radius: 3px; }
+.lev-note { font-size: 10px; color: var(--text3); font-family: var(--mono); }
+
+.bar-wrap { margin: 8px 0 3px; }
+.bar-labels { display: flex; justify-content: space-between; font-size: 9px; color: var(--text3); margin-bottom: 4px; font-family: var(--mono); }
+.bar-track { height: 4px; background: var(--bdr); border-radius: 2px; position: relative; }
+.bar-fill { height: 100%; background: var(--green); border-radius: 2px; transition: width 0.2s; }
+.bar-marker { position: absolute; top: -4px; width: 2px; height: 12px; background: var(--red); border-radius: 1px; }
+.bar-hint { font-size: 9px; color: var(--text3); margin-top: 3px; }
+
+.warn-box { background: var(--rdim); border: 1px solid #ff4d4d30; border-radius: 4px; padding: 7px 10px; font-size: 11px; color: var(--red); margin-top: 6px; display: none; line-height: 1.5; }
+
+.metrics-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 10px; }
+.metric-box { background: var(--bg); border: 1px solid var(--bdr); border-radius: 4px; padding: 8px 10px; }
+.metric-lbl { font-size: 9px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 3px; }
+.metric-val { font-size: 14px; font-weight: 500; font-family: var(--mono); }
+.metric-sub { font-size: 9px; color: var(--text3); margin-top: 2px; }
+
+.outcome-card { background: var(--bg); border: 1px solid var(--bdr); border-radius: 4px; padding: 10px 12px; }
+.out-row { display: flex; justify-content: space-between; font-size: 12px; padding: 4px 0; }
+.out-row:not(:last-child) { border-bottom: 1px solid var(--bdr); }
+.out-lbl { color: var(--text2); }
+.out-g { color: var(--green); font-family: var(--mono); font-weight: 500; }
+.out-r { color: var(--red); font-family: var(--mono); font-weight: 500; }
+.out-n { color: var(--text); font-family: var(--mono); font-weight: 500; }
+
+/* ── SCENARIO TABLE ──────────────────────────────────────────── */
+.sc-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.sc-tbl { width: 100%; border-collapse: collapse; font-size: 11px; font-family: var(--mono); }
+.sc-tbl th { text-align: right; padding: 5px 6px; color: var(--text3); border-bottom: 1px solid var(--bdr); font-weight: 500; }
+.sc-tbl th:first-child { text-align: left; }
+.sc-tbl td { padding: 4px 6px; text-align: right; border-bottom: 1px solid var(--bdr); color: var(--text); }
+.sc-tbl td:first-child { text-align: left; color: var(--text2); }
+.sc-tbl tr.erow td { background: var(--bg3); }
+.liqd { color: var(--red); font-weight: 500; }
+.pos { color: var(--green); }
+.neg { color: var(--red); }
+
+/* ── LOADING ─────────────────────────────────────────────────── */
+.loading { text-align: center; padding: 40px 20px; color: var(--text3); }
+.spinner { display: inline-block; width: 18px; height: 18px; border: 2px solid var(--bdr); border-top-color: var(--green); border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 8px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.placeholder-msg { text-align: center; padding: 40px 16px; color: var(--text3); font-size: 13px; line-height: 1.8; }
+
+/* ── SCROLLBAR ───────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--bdr); border-radius: 2px; }
+
+/* ── MOBILE ──────────────────────────────────────────────────── */
+@media (max-width: 700px) {
+  .header { padding: 10px 12px; }
+  .logo { font-size: 11px; }
+  .last-upd { display: none !important; }
+
+  .main {
+    display: block;
+    min-height: unset;
+    padding-bottom: 64px;
   }
+  .left-panel { border-right: none; border-bottom: 1px solid var(--bdr); padding: 12px; }
+  .right-panel { padding: 12px; background: var(--bg); display: none; }
+  .right-panel.mobile-visible { display: block; }
 
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: 'IBM Plex Sans', sans-serif;
-    font-size: 14px;
-    min-height: 100vh;
-    padding: 0;
-  }
-
-  /* HEADER */
-  .header {
-    background: var(--bg2);
-    border-bottom: 1px solid var(--border);
-    padding: 12px 24px;
+  .mobile-tabs {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    position: sticky;
-    top: 0;
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    background: var(--bg2);
+    border-top: 1px solid var(--bdr);
     z-index: 100;
   }
-  .header-left { display: flex; align-items: center; gap: 16px; }
-  .logo { font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 500; color: var(--green); letter-spacing: 0.05em; }
-  .header-status { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text2); }
-  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: pulse 2s infinite; }
-  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
-  .refresh-btn {
-    background: none; border: 1px solid var(--border2); color: var(--text2);
-    padding: 5px 12px; border-radius: 4px; cursor: pointer; font-size: 12px;
-    font-family: 'IBM Plex Sans', sans-serif; transition: all 0.15s;
+  .mob-tab {
+    flex: 1; padding: 12px 8px; text-align: center;
+    font-size: 11px; color: var(--text2); cursor: pointer;
+    border: none; background: none; font-family: var(--sans);
+    transition: color 0.15s;
   }
-  .refresh-btn:hover { border-color: var(--green); color: var(--green); }
-  .last-update { font-size: 11px; color: var(--text3); font-family: 'IBM Plex Mono', monospace; }
+  .mob-tab.active { color: var(--green); }
+  .mob-tab-dot { width: 4px; height: 4px; border-radius: 50%; background: var(--green); margin: 0 auto 3px; opacity: 0; }
+  .mob-tab.active .mob-tab-dot { opacity: 1; }
 
-  /* MAIN LAYOUT */
-  .main { display: grid; grid-template-columns: 1fr 380px; gap: 0; height: calc(100vh - 49px); }
-  .left-panel { padding: 20px; overflow-y: auto; border-right: 1px solid var(--border); }
-  .right-panel { padding: 20px; overflow-y: auto; background: var(--bg2); }
+  .btc-bar { grid-template-columns: repeat(2, 1fr); }
+  .sig-prices { grid-template-columns: repeat(2, 1fr); }
+  .metrics-grid { grid-template-columns: repeat(3, 1fr); }
+  .risk-grid { grid-template-columns: 1fr; }
 
-  /* SECTION HEADERS */
-  .section-label {
-    font-size: 10px; font-weight: 500; color: var(--text3);
-    letter-spacing: 0.12em; text-transform: uppercase;
-    margin-bottom: 12px;
-  }
+  .lev-num { font-size: 26px; }
+  .result-lev { font-size: 26px; }
 
-  /* BTC STATUS BAR */
-  .btc-bar {
-    background: var(--bg3); border: 1px solid var(--border);
-    border-radius: 6px; padding: 12px 16px;
-    display: flex; align-items: center; gap: 24px;
-    margin-bottom: 20px; flex-wrap: wrap;
-  }
-  .btc-item { display: flex; flex-direction: column; gap: 2px; }
-  .btc-item-label { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.08em; }
-  .btc-item-val { font-size: 14px; font-weight: 500; font-family: 'IBM Plex Mono', monospace; }
-  .regime-badge {
-    padding: 3px 10px; border-radius: 3px; font-size: 11px; font-weight: 500;
-    letter-spacing: 0.06em; text-transform: uppercase;
-  }
-  .regime-ranging { background: var(--green-dim); color: var(--green); border: 1px solid #00c89640; }
-  .regime-trending { background: var(--amber-dim); color: var(--amber); border: 1px solid #f0a04440; }
+  /* Bigger tap targets on mobile */
+  .pill { padding: 5px 10px; font-size: 11px; }
+  .sig-btn { padding: 10px; font-size: 13px; }
+  .scan-btn { padding: 7px 10px; }
+}
 
-  /* SIGNAL CARDS */
-  .signal-card {
-    background: var(--bg3);
-    border: 1px solid var(--border);
-    border-left: 3px solid var(--blue);
-    border-radius: 0 6px 6px 0;
-    padding: 14px 16px;
-    margin-bottom: 10px;
-    transition: border-color 0.2s;
-  }
-  .signal-card:hover { border-color: var(--blue); border-left-color: var(--blue); background: var(--bg4); }
-  .signal-card.tier-a { border-left-color: var(--green); }
-  .signal-card.tier-b { border-left-color: var(--blue); }
-  .signal-card.tier-c { border-left-color: var(--text3); }
-
-  .signal-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-  .signal-meta { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 3px; }
-  .signal-title { font-size: 16px; font-weight: 500; color: var(--white); }
-
-  .tier-badge {
-    padding: 3px 10px; border-radius: 3px; font-size: 12px; font-weight: 500;
-    font-family: 'IBM Plex Mono', monospace;
-  }
-  .tier-a-badge { background: var(--green-dim); color: var(--green); border: 1px solid #00c89650; }
-  .tier-b-badge { background: var(--blue-dim); color: var(--blue); border: 1px solid #4fa3d450; }
-  .tier-c-badge { background: #ffffff08; color: var(--text2); border: 1px solid var(--border); }
-
-  .signal-prices { display: flex; gap: 20px; margin-bottom: 10px; }
-  .price-item { display: flex; flex-direction: column; gap: 2px; }
-  .price-label { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.08em; }
-  .price-val { font-size: 13px; font-family: 'IBM Plex Mono', monospace; font-weight: 500; }
-  .entry-val { color: var(--blue); }
-  .stop-val { color: var(--red); }
-  .target-val { color: var(--green); }
-
-  .signal-tags { display: flex; gap: 6px; flex-wrap: wrap; }
-  .tag {
-    font-size: 10px; padding: 2px 8px; border-radius: 3px;
-    border: 1px solid var(--border); color: var(--text2);
-    font-family: 'IBM Plex Mono', monospace;
-  }
-  .tag-ok { border-color: #00c89640; color: var(--green); background: var(--green-dim); }
-  .tag-warn { border-color: #f0a04440; color: var(--amber); background: var(--amber-dim); }
-
-  .signal-select-btn {
-    width: 100%; margin-top: 10px; background: none;
-    border: 1px solid var(--border2); color: var(--text2);
-    padding: 7px; border-radius: 4px; cursor: pointer; font-size: 12px;
-    font-family: 'IBM Plex Sans', sans-serif; transition: all 0.15s; text-align: center;
-  }
-  .signal-select-btn:hover { border-color: var(--green); color: var(--green); background: var(--green-dim); }
-  .signal-select-btn.selected { border-color: var(--green); color: var(--green); background: var(--green-dim); }
-
-  .no-signals {
-    text-align: center; padding: 48px 20px; color: var(--text3);
-    border: 1px dashed var(--border); border-radius: 6px; font-size: 13px;
-  }
-
-  /* RIGHT PANEL - SIZER */
-  .active-signal-header {
-    background: var(--bg3); border: 1px solid var(--border);
-    border-left: 3px solid var(--blue); border-radius: 0 6px 6px 0;
-    padding: 12px 14px; margin-bottom: 16px;
-  }
-  .active-signal-header.tier-a { border-left-color: var(--green); }
-
-  .tab-row { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
-  .tab {
-    font-size: 13px; padding: 8px 14px; cursor: pointer;
-    color: var(--text2); border-bottom: 2px solid transparent;
-    margin-bottom: -1px; transition: all 0.15s;
-  }
-  .tab.active { color: var(--text); border-bottom-color: var(--green); }
-  .tab:hover:not(.active) { color: var(--text); }
-  .panel { display: none; }
-  .panel.active { display: block; }
-
-  .input-group { margin-bottom: 12px; }
-  .input-label { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 6px; }
-  .input-wrap {
-    display: flex; align-items: center;
-    background: var(--bg); border: 1px solid var(--border);
-    border-radius: 4px; overflow: hidden;
-  }
-  .input-wrap:focus-within { border-color: var(--border2); }
-  .input-prefix { padding: 0 10px; color: var(--text3); font-size: 13px; border-right: 1px solid var(--border); height: 36px; display: flex; align-items: center; }
-  .input-wrap input {
-    background: none; border: none; outline: none; color: var(--white);
-    font-family: 'IBM Plex Mono', monospace; font-size: 14px;
-    padding: 0 10px; height: 36px; width: 100%;
-  }
-
-  .risk-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
-  .risk-input-group { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 10px 12px; }
-  .risk-slider-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
-  input[type=range] {
-    -webkit-appearance: none; flex: 1; height: 3px;
-    background: var(--border2); border-radius: 2px; outline: none;
-  }
-  input[type=range]::-webkit-slider-thumb {
-    -webkit-appearance: none; width: 14px; height: 14px;
-    background: var(--green); border-radius: 50%; cursor: pointer;
-  }
-  .risk-val { font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 500; color: var(--white); min-width: 38px; text-align: right; }
-
-  .risk-pills { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 8px; }
-  .pill {
-    font-size: 11px; padding: 3px 9px; border-radius: 3px;
-    border: 1px solid var(--border); color: var(--text2); cursor: pointer;
-    font-family: 'IBM Plex Mono', monospace; transition: all 0.12s; background: none;
-  }
-  .pill:hover { border-color: var(--border2); color: var(--text); }
-  .pill.active { background: var(--green-dim); border-color: #00c89650; color: var(--green); }
-  .pill.disabled { opacity: 0.3; cursor: not-allowed; pointer-events: none; }
-
-  .result-card {
-    background: var(--bg); border: 1px solid var(--border);
-    border-radius: 6px; padding: 14px; margin-bottom: 12px;
-  }
-  .result-lev { font-size: 32px; font-weight: 500; font-family: 'IBM Plex Mono', monospace; color: var(--white); }
-  .result-lev-row { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
-  .lev-safe { background: var(--green-dim); color: var(--green); border: 1px solid #00c89640; font-size: 11px; padding: 2px 8px; border-radius: 3px; }
-  .lev-unsafe { background: var(--red-dim); color: var(--red); border: 1px solid #ff4d4d40; font-size: 11px; padding: 2px 8px; border-radius: 3px; }
-  .result-note { font-size: 11px; color: var(--text3); font-family: 'IBM Plex Mono', monospace; }
-
-  .bar-wrap { margin: 10px 0 4px; }
-  .bar-labels { display: flex; justify-content: space-between; font-size: 10px; color: var(--text3); margin-bottom: 4px; font-family: 'IBM Plex Mono', monospace; }
-  .bar-track { height: 4px; background: var(--border); border-radius: 2px; position: relative; }
-  .bar-fill { height: 100%; background: var(--green); border-radius: 2px; transition: width 0.2s; }
-  .bar-marker { position: absolute; top: -4px; width: 2px; height: 12px; background: var(--red); border-radius: 1px; }
-  .bar-hint { font-size: 10px; color: var(--text3); margin-top: 4px; }
-
-  .metrics-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 12px; }
-  .metric-box { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 10px 12px; }
-  .metric-label { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px; }
-  .metric-val { font-size: 16px; font-weight: 500; font-family: 'IBM Plex Mono', monospace; }
-
-  .outcome-card { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 10px 14px; }
-  .outcome-row { display: flex; justify-content: space-between; font-size: 12px; padding: 3px 0; }
-  .outcome-row:not(:last-child) { border-bottom: 1px solid var(--border); padding-bottom: 6px; margin-bottom: 6px; }
-  .outcome-label { color: var(--text2); }
-  .outcome-val-g { color: var(--green); font-family: 'IBM Plex Mono', monospace; font-weight: 500; }
-  .outcome-val-r { color: var(--red); font-family: 'IBM Plex Mono', monospace; font-weight: 500; }
-  .outcome-val { color: var(--text); font-family: 'IBM Plex Mono', monospace; font-weight: 500; }
-
-  .warn-box {
-    background: var(--red-dim); border: 1px solid #ff4d4d30; border-radius: 4px;
-    padding: 8px 12px; font-size: 11px; color: var(--red); margin-top: 8px;
-    display: none; line-height: 1.5;
-  }
-
-  /* SCENARIO TABLE */
-  .scenario-table { width: 100%; border-collapse: collapse; font-size: 11px; }
-  .scenario-table th {
-    text-align: right; padding: 5px 8px; color: var(--text3);
-    border-bottom: 1px solid var(--border); font-weight: 500;
-    font-family: 'IBM Plex Mono', monospace;
-  }
-  .scenario-table th:first-child { text-align: left; }
-  .scenario-table td { padding: 5px 8px; text-align: right; border-bottom: 1px solid var(--border); font-family: 'IBM Plex Mono', monospace; color: var(--text); }
-  .scenario-table td:first-child { text-align: left; color: var(--text2); }
-  .scenario-table tr.entry-row td { background: var(--bg3); color: var(--text); }
-  .liqd { color: var(--red); font-weight: 500; }
-  .pos { color: var(--green); }
-  .neg { color: var(--red); }
-
-  /* LOADING */
-  .loading { text-align: center; padding: 40px; color: var(--text3); }
-  .spinner { display: inline-block; width: 20px; height: 20px; border: 2px solid var(--border); border-top-color: var(--green); border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 8px; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-
-  .placeholder-msg {
-    text-align: center; padding: 40px 20px; color: var(--text3); font-size: 13px; line-height: 1.8;
-  }
-
-  /* SCROLLBAR */
-  ::-webkit-scrollbar { width: 6px; }
-  ::-webkit-scrollbar-track { background: var(--bg); }
-  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+@media (min-width: 701px) {
+  .last-upd { display: block; }
+}
 </style>
 </head>
 <body>
 
 <div class="header">
-  <div class="header-left">
+  <div class="header-left" style="display:flex;align-items:center;gap:12px;min-width:0;">
     <div class="logo">BTC-ALT DIVERGENCE</div>
     <div class="header-status">
-      <div class="dot" id="statusDot"></div>
+      <div class="dot"></div>
       <span id="statusText">Connecting...</span>
     </div>
   </div>
-  <div style="display:flex;align-items:center;gap:12px;">
-    <div class="last-update" id="lastUpdate">—</div>
-    <button class="refresh-btn" onclick="runScan()">Scan now</button>
+  <div class="header-right">
+    <div class="last-upd" id="lastUpdate">—</div>
+    <button class="scan-btn" onclick="runScan()">Scan now</button>
   </div>
 </div>
 
 <div class="main">
-
-  <!-- LEFT: SIGNAL LIST -->
-  <div class="left-panel">
+  <div class="left-panel" id="leftPanel">
     <div class="btc-bar" id="btcBar">
-      <div class="btc-item"><div class="btc-item-label">BTC Price</div><div class="btc-item-val" id="btcPrice">—</div></div>
-      <div class="btc-item"><div class="btc-item-label">1h Change</div><div class="btc-item-val" id="btcChange">—</div></div>
-      <div class="btc-item"><div class="btc-item-label">Regime (ADX)</div><div id="btcRegime">—</div></div>
-      <div class="btc-item"><div class="btc-item-label">BTC Volume 1h</div><div class="btc-item-val" id="btcVol">—</div></div>
+      <div class="btc-item"><div class="btc-lbl">BTC Price</div><div class="btc-val" id="btcPrice">—</div></div>
+      <div class="btc-item"><div class="btc-lbl">1h Change</div><div class="btc-val" id="btcChange">—</div></div>
+      <div class="btc-item"><div class="btc-lbl">Regime</div><div id="btcRegime">—</div></div>
+      <div class="btc-item"><div class="btc-lbl">BTC Volume</div><div class="btc-val" id="btcVol">—</div></div>
     </div>
-
-    <div class="section-label">Live Divergence Signals</div>
-    <div id="signalList"><div class="loading"><div class="spinner"></div><div>Fetching live data from Binance...</div></div></div>
+    <div class="sec-label">Live Divergence Signals</div>
+    <div id="signalList"><div class="loading"><div class="spinner"></div><div>Fetching live data...</div></div></div>
   </div>
 
-  <!-- RIGHT: SIZER -->
-  <div class="right-panel">
-    <div class="section-label">Position Sizer</div>
-    <div id="sizerContent">
-      <div class="placeholder-msg">
-        Select a signal on the left<br>to calculate position size and leverage.
-      </div>
-    </div>
+  <div class="right-panel" id="rightPanel">
+    <div class="sec-label">Position Sizer</div>
+    <div id="sizerContent"><div class="placeholder-msg">Select a signal on the left<br>to size the trade.</div></div>
   </div>
-
 </div>
 
+<div class="mobile-tabs">
+  <button class="mob-tab active" id="tabSignals" onclick="showMobileTab('signals')">
+    <div class="mob-tab-dot"></div>Signals
+  </button>
+  <button class="mob-tab" id="tabSizer" onclick="showMobileTab('sizer')">
+    <div class="mob-tab-dot"></div>Sizer
+  </button>
+</div>
+
+
 <script>
+
+function showMobileTab(tab) {
+  const isMobile = window.innerWidth <= 700;
+  if(!isMobile) return;
+  document.getElementById('tabSignals').classList.toggle('active', tab==='signals');
+  document.getElementById('tabSizer').classList.toggle('active', tab==='sizer');
+  document.getElementById('leftPanel').style.display  = tab==='signals' ? 'block' : 'none';
+  document.getElementById('rightPanel').style.display = tab==='sizer'   ? 'block' : 'none';
+}
+
+// Restore normal layout on resize
+window.addEventListener('resize', () => {
+  if(window.innerWidth > 700) {
+    document.getElementById('leftPanel').style.display  = '';
+    document.getElementById('rightPanel').style.display = '';
+  }
+});
+
+
 // ── PASTE YOUR CRYPTOCOMPARE API KEY HERE ────────────────────────────────────
 const CC_KEY = '0dbe798e092bba3857b2bf111644614679e352ba22f58c52b7cbe04fc791dfeb';
 // ─────────────────────────────────────────────────────────────────────────────
@@ -509,27 +567,27 @@ function renderSignals(sigs, regime, btcAdx) {
   }
   list.innerHTML = sigs.map((s,i) => `
     <div class="signal-card tier-${s.tier.toLowerCase()}" id="card-${i}">
-      <div class="signal-top">
+      <div class="sig-top">
         <div>
-          <div class="signal-meta">Active signal</div>
-          <div class="signal-title">${s.coin}/USDT long</div>
+          <div class="sig-meta">Active signal</div>
+          <div class="sig-title">${s.coin}/USDT long</div>
         </div>
         <div class="tier-badge tier-${s.tier.toLowerCase()}-badge">${s.tier} — ${s.confidence.toFixed(0)}/100</div>
       </div>
-      <div class="signal-prices">
-        <div class="price-item"><div class="price-label">Entry</div><div class="price-val entry-val">$${s.entry.toFixed(4)}</div></div>
-        <div class="price-item"><div class="price-label">Stop</div><div class="price-val stop-val">$${s.stop.toFixed(4)}</div></div>
-        <div class="price-item"><div class="price-label">Target</div><div class="price-val target-val">$${s.target.toFixed(4)}</div></div>
-        <div class="price-item"><div class="price-label">R:R</div><div class="price-val" style="color:var(--text)">1:${s.rr.toFixed(2)}</div></div>
+      <div class="sig-prices">
+        <div class="price-item"><div class="price-lbl">Entry</div><div class="price-val ev">$${s.entry.toFixed(4)}</div></div>
+        <div class="price-item"><div class="price-lbl">Stop</div><div class="price-val sv">$${s.stop.toFixed(4)}</div></div>
+        <div class="price-item"><div class="price-lbl">Target</div><div class="price-val tv">$${s.target.toFixed(4)}</div></div>
+        <div class="price-item"><div class="price-lbl">R:R</div><div class="price-val" style="color:var(--text)">1:${s.rr.toFixed(2)}</div></div>
       </div>
-      <div class="signal-tags">
+      <div class="sig-tags">
         <span class="tag ${s.regime==='RANGING'?'tag-ok':'tag-warn'}">${s.regime}</span>
         <span class="tag tag-ok">OI z ${s.vz.toFixed(2)}</span>
         <span class="tag tag-ok">β ${s.beta4h.toFixed(2)}</span>
         <span class="tag">Stop ${s.stopDistPct.toFixed(2)}%</span>
         <span class="tag">Lev ${s.lev}x</span>
       </div>
-      <button class="signal-select-btn" id="btn-${i}" onclick="selectSignal(${i})">Size this trade</button>
+      <button class="sig-btn" id="btn-${i}" onclick="selectSignal(${i})">Size this trade</button>
     </div>
   `).join('');
 }
@@ -547,16 +605,16 @@ function renderSizer() {
   if(!s) return;
   const tierCls = s.tier==='A'?'tier-a':'';
   document.getElementById('sizerContent').innerHTML = `
-    <div class="active-signal-header ${tierCls}">
-      <div class="signal-meta">Active signal</div>
+    <div class="sig-header ${tierCls}">
+      <div class="sig-meta">Active signal</div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:3px;">
         <div style="font-size:15px;font-weight:500;color:var(--white)">${s.coin}/USDT long</div>
         <div class="tier-badge tier-${s.tier.toLowerCase()}-badge">${s.tier} — ${s.confidence.toFixed(0)}/100</div>
       </div>
-      <div class="signal-prices" style="margin-top:8px;margin-bottom:0">
-        <div class="price-item"><div class="price-label">Entry</div><div class="price-val entry-val">$${s.entry.toFixed(4)}</div></div>
-        <div class="price-item"><div class="price-label">Stop</div><div class="price-val stop-val">$${s.stop.toFixed(4)}</div></div>
-        <div class="price-item"><div class="price-label">Target</div><div class="price-val target-val">$${s.target.toFixed(4)}</div></div>
+      <div class="sig-prices" style="margin-top:8px;margin-bottom:0">
+        <div class="price-item"><div class="price-lbl">Entry</div><div class="price-val ev">$${s.entry.toFixed(4)}</div></div>
+        <div class="price-item"><div class="price-lbl">Stop</div><div class="price-val sv">$${s.stop.toFixed(4)}</div></div>
+        <div class="price-item"><div class="price-lbl">Target</div><div class="price-val tv">$${s.target.toFixed(4)}</div></div>
       </div>
     </div>
 
@@ -567,20 +625,20 @@ function renderSizer() {
 
     <div id="panel-sizer" class="panel active">
       <div class="risk-grid">
-        <div class="risk-input-group">
-          <div class="input-label">Trade capital</div>
-          <div class="input-wrap" style="margin-top:6px;">
-            <div class="input-prefix">$</div>
+        <div class="risk-box">
+          <div class="inp-lbl">Trade capital</div>
+          <div class="inp-wrap" style="margin-top:6px;">
+            <div class="inp-pfx">$</div>
             <input type="number" id="capitalInput" value="100" min="1" oninput="compute()">
           </div>
         </div>
-        <div class="risk-input-group">
-          <div class="input-label">Risk per trade</div>
-          <div class="risk-slider-row">
+        <div class="risk-box">
+          <div class="inp-lbl">Risk per trade</div>
+          <div class="slider-row">
             <input type="range" id="riskSlider" min="1" max="50" value="25" step="1" oninput="syncRisk(this.value)">
             <div class="risk-val" id="riskDisplay">25%</div>
           </div>
-          <div class="risk-pills">
+          <div class="pills">
             <button class="pill" onclick="setRisk(1)">1%</button>
             <button class="pill" onclick="setRisk(2)">2%</button>
             <button class="pill" onclick="setRisk(5)">5%</button>
@@ -591,14 +649,14 @@ function renderSizer() {
       </div>
 
       <div class="result-card">
-        <div class="input-label" style="margin-bottom:8px;">Suggested leverage</div>
-        <div class="result-lev-row">
-          <div class="result-lev" id="levDisplay">${s.lev}x</div>
+        <div class="inp-lbl" style="margin-bottom:8px;">Suggested leverage</div>
+        <div class="lev-row">
+          <div class="lev-num" id="levDisplay">${s.lev}x</div>
           <div id="levBadge" class="lev-safe">safe</div>
-          <div class="result-note" id="levNote"></div>
+          <div class="lev-note" id="levNote"></div>
         </div>
-        <div class="input-label" style="margin-bottom:6px;">Select leverage manually</div>
-        <div class="risk-pills" id="levPills"></div>
+        <div class="inp-lbl" style="margin-bottom:6px;">Select leverage manually</div>
+        <div class="pills" id="levPills"></div>
         <div class="bar-wrap">
           <div class="bar-labels"><span>1x</span><span>Max safe: <b id="maxSafeLbl" style="color:var(--text)"></b></span><span>100x</span></div>
           <div class="bar-track"><div class="bar-fill" id="barFill"></div><div class="bar-marker" id="barMarker"></div></div>
@@ -608,21 +666,21 @@ function renderSizer() {
       </div>
 
       <div class="metrics-grid">
-        <div class="metric-box"><div class="metric-label">Max loss</div><div class="metric-val" id="mLoss" style="color:var(--red)">—</div><div style="font-size:10px;color:var(--text3);margin-top:2px;" id="mLossPct">—</div></div>
-        <div class="metric-box"><div class="metric-label">Notional</div><div class="metric-val" id="mNotional">—</div><div style="font-size:10px;color:var(--text3);margin-top:2px;" id="mMargin">—</div></div>
-        <div class="metric-box"><div class="metric-label">Liquidation</div><div class="metric-val" id="mLiq" style="color:var(--amber)">—</div><div style="font-size:10px;color:var(--text3);margin-top:2px;" id="mLiqDist">—</div></div>
+        <div class="metric-box"><div class="metric-lbl">Max loss</div><div class="metric-val" id="mLoss" style="color:var(--red)">—</div><div style="font-size:10px;color:var(--text3);margin-top:2px;" id="mLossPct">—</div></div>
+        <div class="metric-box"><div class="metric-lbl">Notional</div><div class="metric-val" id="mNotional">—</div><div style="font-size:10px;color:var(--text3);margin-top:2px;" id="mMargin">—</div></div>
+        <div class="metric-box"><div class="metric-lbl">Liquidation</div><div class="metric-val" id="mLiq" style="color:var(--amber)">—</div><div style="font-size:10px;color:var(--text3);margin-top:2px;" id="mLiqDist">—</div></div>
       </div>
 
       <div class="outcome-card">
-        <div class="outcome-row"><div class="outcome-label">Target hit (+<span id="oTpPct"></span>%)</div><div class="outcome-val-g" id="oTpPnl">—</div></div>
-        <div class="outcome-row"><div class="outcome-label">Stop hit (−<span id="oSlPct"></span>%)</div><div class="outcome-val-r" id="oSlPnl">—</div></div>
-        <div class="outcome-row" style="border-bottom:none;padding-bottom:0;margin-bottom:0"><div class="outcome-label">Risk/reward ratio</div><div class="outcome-val" id="oRR">—</div></div>
+        <div class="out-row"><div class="out-lbl">Target hit (+<span id="oTpPct"></span>%)</div><div class="out-g" id="oTpPnl">—</div></div>
+        <div class="out-row"><div class="out-lbl">Stop hit (−<span id="oSlPct"></span>%)</div><div class="out-r" id="oSlPnl">—</div></div>
+        <div class="out-row" style="border-bottom:none;padding-bottom:0;margin-bottom:0"><div class="out-lbl">Risk/reward ratio</div><div class="out-n" id="oRR">—</div></div>
       </div>
     </div>
 
     <div id="panel-scenario" class="panel">
       <div style="font-size:11px;color:var(--text3);margin-bottom:10px;">P&amp;L on $<span id="scCap">100</span> capital. LIQD = liquidated before price reached.</div>
-      <div style="overflow-x:auto;"><table class="scenario-table" id="scTable"></table></div>
+      <div class="sc-wrap"><table class="sc-tbl" id="scTable"></table></div>
     </div>
   `;
   compute();
@@ -735,9 +793,14 @@ function buildScenario() {
   });
   html+='</tbody>';
   document.getElementById('scTable').innerHTML = html;
+  document.getElementById('scTable').parentElement.className = 'sc-wrap';
 }
 
 // Key setup
+
+// Auto refresh
+runScan();
+setInterval(runScan, 5*60*1000);
 
 // Auto refresh
 runScan();
