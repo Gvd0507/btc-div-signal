@@ -18,3 +18,4 @@ jobs:
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT:  ${{ secrets.TELEGRAM_CHAT }}
+          CRYPTO_COMPARE_KEY: ${{ secrets.CRYPTO_COMPARE_KEY }}
