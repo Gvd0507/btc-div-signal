@@ -285,10 +285,6 @@
     </div>
   </div>
   <div style="display:flex;align-items:center;gap:12px;">
-    <input id="ccKeyInput" type="password" placeholder="CryptoCompare API key"
-      style="background:#151919;border:1px solid #2a3535;color:#d4e0e0;padding:5px 10px;
-             border-radius:4px;font-size:12px;width:220px;outline:none;"
-      oninput="CC_KEY=this.value;localStorage.setItem('cc_key',this.value)">
     <div class="last-update" id="lastUpdate">—</div>
     <button class="refresh-btn" onclick="runScan()">Scan now</button>
   </div>
@@ -322,180 +318,188 @@
 </div>
 
 <script>
-const COINS  = ['ETH','SOL','BNB','AVAX','MATIC','ARB'];
-const BTC    = 'BTC';
-const MAINT  = 0.004;
+// ── PASTE YOUR CRYPTOCOMPARE API KEY HERE ────────────────────────────────────
+const CC_KEY = '0dbe798e092bba3857b2bf111644614679e352ba22f58c52b7cbe04fc791dfeb';
+// ─────────────────────────────────────────────────────────────────────────────
+
+const COINS = ['ETH','SOL','BNB','AVAX','MATIC','ARB'];
+const BTC   = 'BTC';
+const MAINT = 0.004;
 
 let selectedSignal = null;
-let selRisk = 25;
-let selLev  = null;
-let btcData = null;
-let altData = {};
-let signals = [];
-let CC_KEY  = localStorage.getItem('cc_key') || '';
+let selRisk  = 25;
+let selLev   = null;
+let btcData  = null;
+let altData  = {};
+let signals  = [];
 
 async function fetchCandles(symbol, limit=60) {
-  if(!CC_KEY) throw new Error('Enter your CryptoCompare API key above');
   const url = `https://min-api.cryptocompare.com/data/v2/histohour?fsym=${symbol}&tsym=USDT&limit=${limit}&api_key=${CC_KEY}`;
   const r = await fetch(url);
+  if(!r.ok) throw new Error(`HTTP ${r.status} for ${symbol}`);
   const d = await r.json();
-  if(d.Response !== 'Success') throw new Error(`CryptoCompare: ${d.Message}`);
-  return d.Data.Data
-    .filter(c => c.close > 0)
-    .map(c => ({ t:c.time, o:c.open, h:c.high, l:c.low, c:c.close, v:c.volumefrom }));
+  if(d.Response !== 'Success') throw new Error(`CC error ${symbol}: ${d.Message}`);
+  const rows = d.Data.Data.filter(c => c.close > 0);
+  if(rows.length < 10) throw new Error(`Only ${rows.length} candles for ${symbol}`);
+  return rows.map(c => ({ t:c.time, o:c.open, h:c.high, l:c.low, c:c.close, v:c.volumefrom }));
 }
 
 function logRet(candles) {
   const ret = [];
-  for(let i=1;i<candles.length;i++) ret.push(Math.log(candles[i].c/candles[i-1].c));
+  for(let i=1;i<candles.length;i++) {
+    const p = candles[i-1].c, c = candles[i].c;
+    ret.push((p>0 && c>0) ? Math.log(c/p) : 0);
+  }
   return ret;
 }
 
-function rollingBeta(btcR, altR, w=4) {
-  const n = Math.min(btcR.length, altR.length);
-  const b = btcR.slice(n-w), a = altR.slice(n-w);
+function rollingBeta(btcR, altR, w) {
+  w = Math.min(w, btcR.length, altR.length);
+  if(w < 2) return 0;
+  const b = btcR.slice(-w), a = altR.slice(-w);
   const bm = b.reduce((s,x)=>s+x,0)/w, am = a.reduce((s,x)=>s+x,0)/w;
-  let cov=0, varB=0;
-  for(let i=0;i<w;i++){cov+=(b[i]-bm)*(a[i]-am);varB+=(b[i]-bm)**2;}
-  return varB===0 ? 0 : cov/varB;
+  let cov=0, vb=0;
+  for(let i=0;i<w;i++){cov+=(b[i]-bm)*(a[i]-am);vb+=(b[i]-bm)**2;}
+  return vb===0 ? 0 : cov/vb;
 }
 
-function rollingCorr(btcR, altR, w=24) {
-  const n = Math.min(btcR.length, altR.length);
-  if(n < w) return 0;
-  const b = btcR.slice(n-w), a = altR.slice(n-w);
+function rollingCorr(btcR, altR, w) {
+  w = Math.min(w, btcR.length, altR.length);
+  if(w < 2) return 0;
+  const b = btcR.slice(-w), a = altR.slice(-w);
   const bm = b.reduce((s,x)=>s+x,0)/w, am = a.reduce((s,x)=>s+x,0)/w;
   let num=0, db=0, da=0;
   for(let i=0;i<w;i++){num+=(b[i]-bm)*(a[i]-am);db+=(b[i]-bm)**2;da+=(a[i]-am)**2;}
-  return db===0||da===0 ? 0 : num/Math.sqrt(db*da);
+  return (db===0||da===0) ? 0 : num/Math.sqrt(db*da);
 }
 
-function adx(candles, p=14) {
-  if(candles.length < p+1) return 20;
-  let trSum=0, dmPSum=0, dmMSum=0;
-  for(let i=candles.length-p;i<candles.length;i++){
-    const c=candles[i], prev=candles[i-1];
-    const tr = Math.max(c.h-c.l, Math.abs(c.h-prev.c), Math.abs(c.l-prev.c));
-    const dmP = Math.max(c.h-prev.h, 0) > Math.max(prev.l-c.l,0) ? Math.max(c.h-prev.h,0) : 0;
-    const dmM = Math.max(prev.l-c.l, 0) > Math.max(c.h-prev.h,0) ? Math.max(prev.l-c.l,0) : 0;
-    trSum+=tr; dmPSum+=dmP; dmMSum+=dmM;
+function computeAdx(candles, p=14) {
+  if(candles.length < p+2) return 20;
+  let trS=0, dpS=0, dmS=0;
+  for(let i=candles.length-p; i<candles.length; i++) {
+    const c=candles[i], v=candles[i-1];
+    trS += Math.max(c.h-c.l, Math.abs(c.h-v.c), Math.abs(c.l-v.c));
+    const up=c.h-v.h, dn=v.l-c.l;
+    if(up>dn && up>0) dpS+=up;
+    if(dn>up && dn>0) dmS+=dn;
   }
-  if(trSum===0) return 20;
-  const diP=100*dmPSum/trSum, diM=100*dmMSum/trSum;
-  return 100*Math.abs(diP-diM)/(diP+diM||1);
+  if(trS===0) return 20;
+  const dip=100*dpS/trS, dim=100*dmS/trS, den=dip+dim;
+  return den===0 ? 20 : 100*Math.abs(dip-dim)/den;
 }
 
 function swingLow(candles, n=3) {
-  for(let i=candles.length-n-1;i>=n;i--) {
-    const c=candles[i];
-    let isLow=true;
-    for(let j=i-n;j<i;j++) if(candles[j].l<=c.l){isLow=false;break;}
-    for(let j=i+1;j<=i+n&&j<candles.length;j++) if(candles[j].l<=c.l){isLow=false;break;}
-    if(isLow) return {price:c.l, idx:i};
+  if(candles.length < 2*n+1) return null;
+  for(let i=candles.length-n-1; i>=n; i--) {
+    const lo = candles[i].l;
+    let ok = true;
+    for(let j=i-n;j<i;j++) if(candles[j].l<=lo){ok=false;break;}
+    if(!ok) continue;
+    for(let j=i+1;j<=Math.min(i+n,candles.length-1);j++) if(candles[j].l<=lo){ok=false;break;}
+    if(ok) return {price:lo, idx:i};
   }
   return null;
 }
 
 function volZscore(candles, w=24) {
-  const vols = candles.slice(-w-1,-1).map(c=>c.v);
+  w = Math.min(w, candles.length-1);
+  if(w < 2) return 0;
+  const vols = candles.slice(-(w+1), -1).map(c=>c.v);
   const mean = vols.reduce((s,x)=>s+x,0)/vols.length;
-  const std = Math.sqrt(vols.map(v=>(v-mean)**2).reduce((s,x)=>s+x,0)/vols.length);
-  const cur = candles[candles.length-1].v;
-  return std===0 ? 0 : (cur-mean)/std;
+  const std  = Math.sqrt(vols.map(v=>(v-mean)**2).reduce((s,x)=>s+x,0)/vols.length);
+  return std===0 ? 0 : (candles[candles.length-1].v - mean)/std;
 }
 
 async function runScan() {
   document.getElementById('statusText').textContent = 'Scanning...';
   document.getElementById('signalList').innerHTML = '<div class="loading"><div class="spinner"></div><div>Fetching live data...</div></div>';
 
+  if(!CC_KEY) {
+    document.getElementById('statusText').textContent = 'No API key';
+    document.getElementById('signalList').innerHTML = '<div class="no-signals">No API key set.<br><br>Open index.html in a text editor and paste your CryptoCompare API key into the CC_KEY variable at the top of the script.</div>';
+    return;
+  }
+
   try {
-    // Fetch BTC
     const btcCandles = await fetchCandles(BTC, 60);
     btcData = btcCandles;
-    const btcRet = logRet(btcCandles);
-    const btcAdx = adx(btcCandles);
+    const btcRet   = logRet(btcCandles);
+    const btcAdxV  = computeAdx(btcCandles);
     const btcSwing = swingLow(btcCandles);
-    const btcLast = btcCandles[btcCandles.length-1];
-    const btcPrev = btcCandles[btcCandles.length-2];
-    const btcChg = ((btcLast.c - btcPrev.c)/btcPrev.c*100).toFixed(2);
-    const regime = btcAdx < 25 ? 'RANGING' : 'TRENDING';
+    const btcVz    = volZscore(btcCandles);
+    const last     = btcCandles[btcCandles.length-1];
+    const prev     = btcCandles[btcCandles.length-2];
+    const chg      = ((last.c-prev.c)/prev.c*100).toFixed(2);
+    const regime   = btcAdxV < 25 ? 'RANGING' : 'TRENDING';
 
-    document.getElementById('btcPrice').textContent = '$'+btcLast.c.toLocaleString(undefined,{maximumFractionDigits:0});
-    document.getElementById('btcChange').innerHTML = `<span style="color:${btcChg>=0?'var(--green)':'var(--red)'}">${btcChg>=0?'+':''}${btcChg}%</span>`;
-    document.getElementById('btcVol').textContent = (btcLast.v/1000).toFixed(1)+'K';
-    document.getElementById('btcRegime').innerHTML = `<span class="regime-badge ${regime==='RANGING'?'regime-ranging':'regime-trending'}">${regime} ${btcAdx.toFixed(0)}</span>`;
+    document.getElementById('btcPrice').textContent  = '$'+last.c.toLocaleString(undefined,{maximumFractionDigits:0});
+    document.getElementById('btcChange').innerHTML   = `<span style="color:${chg>=0?'var(--green)':'var(--red)'}">${chg>=0?'+':''}${chg}%</span>`;
+    document.getElementById('btcVol').textContent    = last.v.toFixed(0)+' BTC';
+    document.getElementById('btcRegime').innerHTML   = `<span class="regime-badge ${regime==='RANGING'?'regime-ranging':'regime-trending'}">${regime} ${btcAdxV.toFixed(0)}</span>`;
 
-    // Fetch alts and compute signals
     signals = [];
     for(const coin of COINS) {
       try {
-        const altCandles = await fetchCandles(coin, 60);
-        altData[coin] = altCandles;
-        const altRet = logRet(altCandles);
-        const n = Math.min(btcRet.length, altRet.length);
+        const ac  = await fetchCandles(coin, 60);
+        altData[coin] = ac;
+        const ar  = logRet(ac);
+        const n   = Math.min(btcRet.length, ar.length);
+        const b4  = rollingBeta(btcRet.slice(-n), ar.slice(-n), 4);
+        const b24 = rollingBeta(btcRet.slice(-n), ar.slice(-n), Math.min(24,n));
+        const cr  = rollingCorr(btcRet.slice(-n), ar.slice(-n), Math.min(24,n));
+        const vz  = volZscore(ac);
+        const asw = swingLow(ac);
+        const al  = ac[ac.length-1];
 
-        const beta4h = rollingBeta(btcRet.slice(-n), altRet.slice(-n), 4);
-        const beta24h = rollingBeta(btcRet.slice(-n), altRet.slice(-n), Math.min(24,n));
-        const corr24h = rollingCorr(btcRet.slice(-n), altRet.slice(-n), Math.min(24,n));
-
-        const altLast = altCandles[altCandles.length-1];
-        const altSwing = swingLow(altCandles);
-        const vz = volZscore(altCandles, 24);
-        const btcVz = volZscore(btcCandles, 24);
-
-        // Conditions
-        const c1 = beta4h < 0.3 && beta24h > 0.8;
+        const c1 = b4 < 0.3 && b24 > 0.8;
         const c2 = btcSwing !== null;
-        const c3 = altSwing !== null && altLast.l > altSwing.price;
+        const c3 = asw !== null && al.l > asw.price;
         const c4 = vz > 1.0;
-        const c5 = btcVz < 0.5;
+
+        console.log(`${coin}: beta4h=${b4.toFixed(3)} beta24h=${b24.toFixed(3)} vz=${vz.toFixed(2)} c1=${c1} c2=${c2} c3=${c3} c4=${c4}`);
 
         if(!c1 || !c2 || !c3 || !c4) continue;
 
-        // Scores
-        const betaScore = Math.min((0.3-beta4h)/0.3, 1.0)*30;
-        const oiScore = Math.min((vz-1.0)/2.0, 1.0)*30;
-        const regimeScore = regime==='RANGING' ? 25 : 0;
-        const fundScore = 15;
-        const confidence = betaScore+oiScore+regimeScore+fundScore;
-        const tier = confidence>=75?'A':confidence>=55?'B':'C';
+        const bScore = Math.min((0.3-b4)/0.3, 1.0)*30;
+        const oScore = Math.min((vz-1.0)/2.0, 1.0)*30;
+        const rScore = regime==='RANGING' ? 25 : 0;
+        const conf   = bScore + oScore + rScore + 15;
+        const tier   = conf>=75?'A':conf>=55?'B':'C';
+        if(tier==='C') continue;
 
-        // Entry/Stop/Target
-        const entry = altLast.c;
-        const stop = altSwing.price*0.995;
+        const entry    = al.c;
+        const stop     = asw.price * 0.995;
         const stopDist = (entry-stop)/entry;
         if(stopDist<=0 || stop>=entry) continue;
-        const btcMag = btcSwing ? Math.abs(btcLast.c-btcSwing.price)/btcSwing.price : 0;
-        const minTarget = entry + stopDist*entry*1.5;
-        const btcTarget = entry*(1+1.5*btcMag);
-        const target = Math.max(minTarget, btcTarget);
-        const rr = (target-entry)/(entry-stop);
+
+        const btcMag   = btcSwing ? Math.abs(last.c-btcSwing.price)/btcSwing.price : 0;
+        const target   = entry + Math.max(stopDist*entry*1.5, entry*btcMag*1.5);
+        const rr       = (target-entry)/(entry-stop);
         if(rr < 1.5) continue;
 
-        // Leverage
         const idealLev = 0.25/stopDist;
-        const maxSafe = Math.floor(1/(stopDist+MAINT));
-        const lev = Math.min(Math.floor(idealLev), maxSafe, 100);
+        const maxSafe  = Math.floor(1/(stopDist+MAINT));
+        const lev      = Math.min(Math.floor(idealLev), maxSafe, 100);
         if(lev < 1) continue;
 
-        const mag = (1-beta4h)*Math.max(vz,0)*(1+(altLast.l-altSwing.price)/altSwing.price);
-
-        signals.push({coin, entry, stop, target, stopDistPct: stopDist*100, beta4h, corr24h, vz, regime, confidence, tier, lev, mag, rr, altSwing: altSwing.price, btcAdx});
-      } catch(e) {}
+        signals.push({coin, entry, stop, target, stopDistPct:stopDist*100, beta4h:b4, corr24h:cr, vz, regime, confidence:conf, tier, lev, rr, altSwing:asw.price, btcAdx:btcAdxV});
+      } catch(e) {
+        console.warn(`${coin} scan error:`, e.message);
+      }
     }
 
-    // Sort by confidence
-    signals.sort((a,b) => b.confidence-a.confidence);
-
-    renderSignals(signals, regime, btcAdx);
-    document.getElementById('statusText').textContent = `Live — ${signals.length} signal${signals.length!==1?'s':''} detected`;
+    signals.sort((a,b)=>b.confidence-a.confidence);
+    renderSignals(signals, regime, btcAdxV);
+    document.getElementById('statusText').textContent = `Live — ${signals.length} signal${signals.length!==1?'s':''} found`;
     document.getElementById('lastUpdate').textContent = 'Updated '+new Date().toLocaleTimeString();
 
   } catch(e) {
-    document.getElementById('statusText').textContent = 'Error — check console';
-    document.getElementById('signalList').innerHTML = `<div class="no-signals">Failed to fetch data.<br>${e.message}</div>`;
+    console.error('runScan error:', e);
+    document.getElementById('statusText').textContent = 'Error — see console (F12)';
+    document.getElementById('signalList').innerHTML = `<div class="no-signals">Fetch error: ${e.message}</div>`;
   }
 }
+
 
 function renderSignals(sigs, regime, btcAdx) {
   const list = document.getElementById('signalList');
@@ -733,13 +737,9 @@ function buildScenario() {
   document.getElementById('scTable').innerHTML = html;
 }
 
-// Pre-fill saved key
-const savedKey = localStorage.getItem('cc_key');
-if(savedKey) {
-  CC_KEY = savedKey;
-  document.getElementById('ccKeyInput').value = savedKey;
-}
-// Auto refresh every 5 minutes
+// Key setup
+
+// Auto refresh
 runScan();
 setInterval(runScan, 5*60*1000);
 </script>
