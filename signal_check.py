@@ -85,22 +85,39 @@ def rolling_beta(btc_r, alt_r, w):
     return cov/var if var != 0 else 0.0
 
 def compute_adx(candles, p=14):
-    if len(candles) < p + 2:
+    # Proper Wilder-smoothed ADX — matches TradingView output
+    if len(candles) < p * 2 + 1:
         return 20.0
-    tr_sum = dm_p = dm_m = 0.0
-    for i in range(len(candles)-p, len(candles)):
+    trs, dps, dms = [], [], []
+    for i in range(1, len(candles)):
         c, prev = candles[i], candles[i-1]
         tr   = max(c['h']-c['l'], abs(c['h']-prev['c']), abs(c['l']-prev['c']))
         up   = c['h'] - prev['h']
         down = prev['l'] - c['l']
-        tr_sum += tr
-        if up > down and up > 0:   dm_p += up
-        if down > up and down > 0: dm_m += down
-    if tr_sum == 0: return 20.0
-    di_p  = 100.0 * dm_p / tr_sum
-    di_m  = 100.0 * dm_m / tr_sum
-    denom = di_p + di_m
-    return 100.0 * abs(di_p-di_m)/denom if denom else 20.0
+        trs.append(tr)
+        dps.append(up   if up   > down and up   > 0 else 0)
+        dms.append(down if down > up   and down > 0 else 0)
+    atr = sum(trs[:p])
+    adp = sum(dps[:p])
+    adm = sum(dms[:p])
+    dx_vals = []
+    for i in range(p, len(trs)):
+        atr = atr - atr/p + trs[i]
+        adp = adp - adp/p + dps[i]
+        adm = adm - adm/p + dms[i]
+        if atr == 0:
+            dx_vals.append(0.0)
+            continue
+        dip   = 100.0 * adp / atr
+        dim   = 100.0 * adm / atr
+        denom = dip + dim
+        dx_vals.append(100.0 * abs(dip-dim)/denom if denom else 0.0)
+    if len(dx_vals) < p:
+        return 20.0
+    adx_val = sum(dx_vals[:p]) / p
+    for dx in dx_vals[p:]:
+        adx_val = (adx_val * (p-1) + dx) / p
+    return adx_val
 
 def swing_low(candles, n=3):
     if len(candles) < 2*n+1:

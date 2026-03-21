@@ -436,18 +436,34 @@ function rollingCorr(btcR, altR, w) {
 }
 
 function computeAdx(candles, p=14) {
-  if(candles.length < p+2) return 20;
-  let trS=0, dpS=0, dmS=0;
-  for(let i=candles.length-p; i<candles.length; i++) {
+  // Proper Wilder-smoothed ADX — matches TradingView output
+  if(candles.length < p*2+1) return 20;
+  const trs=[], dps=[], dms=[];
+  for(let i=1;i<candles.length;i++) {
     const c=candles[i], v=candles[i-1];
-    trS += Math.max(c.h-c.l, Math.abs(c.h-v.c), Math.abs(c.l-v.c));
+    trs.push(Math.max(c.h-c.l, Math.abs(c.h-v.c), Math.abs(c.l-v.c)));
     const up=c.h-v.h, dn=v.l-c.l;
-    if(up>dn && up>0) dpS+=up;
-    if(dn>up && dn>0) dmS+=dn;
+    dps.push((up>dn && up>0) ? up : 0);
+    dms.push((dn>up && dn>0) ? dn : 0);
   }
-  if(trS===0) return 20;
-  const dip=100*dpS/trS, dim=100*dmS/trS, den=dip+dim;
-  return den===0 ? 20 : 100*Math.abs(dip-dim)/den;
+  // First smoothed values = sum of first p
+  let atr = trs.slice(0,p).reduce((s,x)=>s+x,0);
+  let adp = dps.slice(0,p).reduce((s,x)=>s+x,0);
+  let adm = dms.slice(0,p).reduce((s,x)=>s+x,0);
+  const dxArr=[];
+  for(let i=p;i<trs.length;i++) {
+    atr = atr - atr/p + trs[i];
+    adp = adp - adp/p + dps[i];
+    adm = adm - adm/p + dms[i];
+    if(atr===0){dxArr.push(0);continue;}
+    const dip=100*adp/atr, dim=100*adm/atr, den=dip+dim;
+    dxArr.push(den===0 ? 0 : 100*Math.abs(dip-dim)/den);
+  }
+  if(dxArr.length < p) return 20;
+  // ADX = Wilder-smoothed average of DX values
+  let adx = dxArr.slice(0,p).reduce((s,x)=>s+x,0)/p;
+  for(let i=p;i<dxArr.length;i++) adx = (adx*(p-1)+dxArr[i])/p;
+  return adx;
 }
 
 function swingLow(candles, n=3) {
