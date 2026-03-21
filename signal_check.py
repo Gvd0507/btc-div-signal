@@ -20,24 +20,38 @@ def send(msg):
 
 # ─── DATA ────────────────────────────────────────────────────────────────────
 
-def get_candles(symbol, interval='1h', limit=60):
+def get_candles(symbol, interval='60', limit=60):
+    # Uses Bybit v5 linear perpetuals API — works from cloud IPs unlike Binance
+    # interval: '60' = 1 hour, '5' = 5 min, '1' = 1 min
     try:
         r = requests.get(
-            'https://fapi.binance.com/fapi/v1/klines',
-            params={'symbol': symbol, 'interval': interval, 'limit': limit},
+            'https://api.bybit.com/v5/market/kline',
+            params={
+                'category': 'linear',
+                'symbol':   symbol,
+                'interval': interval,
+                'limit':    limit
+            },
             timeout=15
         )
         r.raise_for_status()
+        data = r.json()
+        if data.get('retCode') != 0:
+            print(f"Bybit error for {symbol}: {data.get('retMsg')}")
+            return []
+        # Bybit returns newest first — reverse so oldest is index 0
+        rows = data['result']['list']
+        rows = list(reversed(rows))
         result = []
-        for c in r.json():
+        for c in rows:
             try:
-                t = int(c[0])
-                o = float(c[1])
-                h = float(c[2])
-                l = float(c[3])
+                # Bybit format: [startTime, open, high, low, close, volume, turnover]
+                t  = int(c[0])
+                o  = float(c[1])
+                h  = float(c[2])
+                l  = float(c[3])
                 cl = float(c[4])
-                v = float(c[5])
-                # sanity check — skip rows where values are clearly wrong
+                v  = float(c[5])
                 if h < l or cl <= 0 or v < 0:
                     continue
                 result.append({'t': t, 'o': o, 'h': h, 'l': l, 'c': cl, 'v': v})
