@@ -518,13 +518,14 @@ async function runScan() {
       const raw   = liveD?.RAW?.BTC?.USDT;
       if(raw) {
         livePrice = raw.PRICE;
-        liveVol   = raw.VOLUME24HOUR; // rolling 24h volume — more useful than 1h
+        // VOLUMEHOUR = volume traded in the current partial hour (matches TradingView 1h candle volume)
+        liveVol   = raw.VOLUMEHOUR;
       }
     } catch(e) { /* fallback to last closed candle values */ }
 
-    // 1h change: live price vs last complete candle open (the candle currently forming)
+    // 1h change: live price vs previous closed candle close (matches TradingView)
     const lastComplete = btcCandles[btcCandles.length-1];
-    const chg = ((livePrice - lastComplete.o) / lastComplete.o * 100).toFixed(2);
+    const chg = ((livePrice - lastComplete.c) / lastComplete.c * 100).toFixed(2);
 
     document.getElementById('btcPrice').textContent  = '$'+livePrice.toLocaleString(undefined,{maximumFractionDigits:0});
     document.getElementById('btcChange').innerHTML   = `<span style="color:${chg>=0?'var(--green)':'var(--red)'}">${chg>=0?'+':''}${chg}%</span>`;
