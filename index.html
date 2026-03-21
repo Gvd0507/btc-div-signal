@@ -285,6 +285,10 @@
     </div>
   </div>
   <div style="display:flex;align-items:center;gap:12px;">
+    <input id="ccKeyInput" type="password" placeholder="CryptoCompare API key"
+      style="background:#151919;border:1px solid #2a3535;color:#d4e0e0;padding:5px 10px;
+             border-radius:4px;font-size:12px;width:220px;outline:none;"
+      oninput="CC_KEY=this.value;localStorage.setItem('cc_key',this.value)">
     <div class="last-update" id="lastUpdate">—</div>
     <button class="refresh-btn" onclick="runScan()">Scan now</button>
   </div>
@@ -318,24 +322,27 @@
 </div>
 
 <script>
-const COINS = ['ETHUSDT','SOLUSDT','BNBUSDT','AVAXUSDT','MATICUSDT','ARBUSDT'];
-const BTC = 'BTCUSDT';
-const BASE = 'https://fapi.binance.com';
-const MAINT = 0.004;
+const COINS  = ['ETH','SOL','BNB','AVAX','MATIC','ARB'];
+const BTC    = 'BTC';
+const MAINT  = 0.004;
 
 let selectedSignal = null;
 let selRisk = 25;
-let selLev = null;
+let selLev  = null;
 let btcData = null;
 let altData = {};
 let signals = [];
+let CC_KEY  = localStorage.getItem('cc_key') || '';
 
-async function fetchCandles(symbol, interval='1h', limit=50) {
-  const r = await fetch(`${BASE}/fapi/v1/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`);
+async function fetchCandles(symbol, limit=60) {
+  if(!CC_KEY) throw new Error('Enter your CryptoCompare API key above');
+  const url = `https://min-api.cryptocompare.com/data/v2/histohour?fsym=${symbol}&tsym=USDT&limit=${limit}&api_key=${CC_KEY}`;
+  const r = await fetch(url);
   const d = await r.json();
-  return d.map(c => ({
-    t: c[0], o: +c[1], h: +c[2], l: +c[3], c: +c[4], v: +c[5]
-  }));
+  if(d.Response !== 'Success') throw new Error(`CryptoCompare: ${d.Message}`);
+  return d.Data.Data
+    .filter(c => c.close > 0)
+    .map(c => ({ t:c.time, o:c.open, h:c.high, l:c.low, c:c.close, v:c.volumefrom }));
 }
 
 function logRet(candles) {
@@ -403,7 +410,7 @@ async function runScan() {
 
   try {
     // Fetch BTC
-    const btcCandles = await fetchCandles(BTC, '1h', 50);
+    const btcCandles = await fetchCandles(BTC, 60);
     btcData = btcCandles;
     const btcRet = logRet(btcCandles);
     const btcAdx = adx(btcCandles);
@@ -422,7 +429,7 @@ async function runScan() {
     signals = [];
     for(const coin of COINS) {
       try {
-        const altCandles = await fetchCandles(coin, '1h', 50);
+        const altCandles = await fetchCandles(coin, 60);
         altData[coin] = altCandles;
         const altRet = logRet(altCandles);
         const n = Math.min(btcRet.length, altRet.length);
@@ -501,7 +508,7 @@ function renderSignals(sigs, regime, btcAdx) {
       <div class="signal-top">
         <div>
           <div class="signal-meta">Active signal</div>
-          <div class="signal-title">${s.coin.replace('USDT','')}USDT long</div>
+          <div class="signal-title">${s.coin}/USDT long</div>
         </div>
         <div class="tier-badge tier-${s.tier.toLowerCase()}-badge">${s.tier} — ${s.confidence.toFixed(0)}/100</div>
       </div>
@@ -539,7 +546,7 @@ function renderSizer() {
     <div class="active-signal-header ${tierCls}">
       <div class="signal-meta">Active signal</div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:3px;">
-        <div style="font-size:15px;font-weight:500;color:var(--white)">${s.coin.replace('USDT','')}USDT long</div>
+        <div style="font-size:15px;font-weight:500;color:var(--white)">${s.coin}/USDT long</div>
         <div class="tier-badge tier-${s.tier.toLowerCase()}-badge">${s.tier} — ${s.confidence.toFixed(0)}/100</div>
       </div>
       <div class="signal-prices" style="margin-top:8px;margin-bottom:0">
@@ -726,6 +733,12 @@ function buildScenario() {
   document.getElementById('scTable').innerHTML = html;
 }
 
+// Pre-fill saved key
+const savedKey = localStorage.getItem('cc_key');
+if(savedKey) {
+  CC_KEY = savedKey;
+  document.getElementById('ccKeyInput').value = savedKey;
+}
 // Auto refresh every 5 minutes
 runScan();
 setInterval(runScan, 5*60*1000);
