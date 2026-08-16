@@ -1,12 +1,12 @@
 name: Signal Scan
 
 on:
-  schedule:
-    - cron: '*/5 * * * *'
+  # Scheduled Telegram alerts disabled.
   workflow_dispatch:
 
 jobs:
   scan:
+    if: false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
