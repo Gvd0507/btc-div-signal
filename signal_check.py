@@ -81,7 +81,49 @@ def get_candles(symbol, limit=60):
             if complete:
                 return complete
 
-        return []
+        # Fallback to Binance public klines when CryptoCompare quota is exhausted.
+        try:
+            pair = f"{symbol}USDT"
+            r = requests.get(
+                'https://api.binance.com/api/v3/klines',
+                params={
+                    'symbol': pair,
+                    'interval': '1h',
+                    'limit': limit + 1,
+                },
+                timeout=20
+            )
+            if r.status_code != 200:
+                snippet = r.text[:200].replace('\n', ' ')
+                print(f"Binance HTTP {r.status_code} {pair}: {snippet}")
+                return []
+
+            rows = r.json()
+            if not isinstance(rows, list) or not rows:
+                print(f"Binance returned 0 rows for {pair}")
+                return []
+
+            out = []
+            for row in rows:
+                try:
+                    t = int(row[0]) // 1000
+                    o = float(row[1])
+                    h = float(row[2])
+                    l = float(row[3])
+                    c = float(row[4])
+                    v = float(row[5])
+                    if c <= 0 or h < l or v < 0:
+                        continue
+                    out.append({'t': t, 'o': o, 'h': h, 'l': l, 'c': c, 'v': v})
+                except (ValueError, TypeError, IndexError):
+                    continue
+
+            complete = out[:-1] if len(out) > 1 else out
+            print(f"  {pair} via Binance fallback: {len(complete)} complete candles")
+            return complete
+        except Exception as be:
+            print(f"Binance fallback error {symbol}: {be}")
+            return []
     except Exception as e:
         print(f"get_candles error {symbol}: {e}")
         return []
