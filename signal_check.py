@@ -8,6 +8,8 @@ COINS       = ['ETH','SOL','BNB','AVAX','MATIC','ARB']
 MAINT       = 0.004
 MIN_CANDLES = 30
 
+QUOTE_CURRENCIES = ['USDT', 'USD']
+
 # ─── TELEGRAM ────────────────────────────────────────────────────────────────
 
 def send(msg):
@@ -25,39 +27,61 @@ def send(msg):
 
 def get_candles(symbol, limit=60):
     try:
-        r = requests.get(
-            'https://min-api.cryptocompare.com/data/v2/histohour',
-            params={
-                'fsym':    symbol,
-                'tsym':    'USDT',
-                'limit':   limit,
-                'api_key': CC_KEY
-            },
-            timeout=20
-        )
-        r.raise_for_status()
-        data = r.json()
-        if data.get('Response') != 'Success':
-            print(f"CryptoCompare error {symbol}: {data.get('Message','unknown')}")
-            return []
-        result = []
-        for c in data['Data']['Data']:
-            try:
-                t  = int(c['time'])
-                o  = float(c['open'])
-                h  = float(c['high'])
-                l  = float(c['low'])
-                cl = float(c['close'])
-                v  = float(c['volumefrom'])
-                if cl <= 0 or h < l or v < 0:
-                    continue
-                result.append({'t': t, 'o': o, 'h': h, 'l': l, 'c': cl, 'v': v})
-            except (KeyError, ValueError, TypeError):
+        for tsym in QUOTE_CURRENCIES:
+            r = requests.get(
+                'https://min-api.cryptocompare.com/data/v2/histohour',
+                params={
+                    'fsym':    symbol,
+                    'tsym':    tsym,
+                    'limit':   limit,
+                    # Keep query param for compatibility with older examples.
+                    'api_key': CC_KEY
+                },
+                headers={
+                    # CryptoCompare's preferred auth mechanism.
+                    'authorization': f'Apikey {CC_KEY}'
+                },
+                timeout=20
+            )
+
+            if r.status_code != 200:
+                snippet = r.text[:200].replace('\n', ' ')
+                print(f"CryptoCompare HTTP {r.status_code} {symbol}/{tsym}: {snippet}")
                 continue
-        # Drop last row — current incomplete candle distorts ADX, beta, vol z-score
-        complete = result[:-1] if len(result) > 1 else result
-        print(f"  {symbol}: {len(complete)} complete candles")
-        return complete
+
+            data = r.json()
+            if data.get('Response') != 'Success':
+                msg = data.get('Message', 'unknown')
+                print(f"CryptoCompare error {symbol}/{tsym}: {msg}")
+                continue
+
+            raw = data.get('Data', {}).get('Data', [])
+            if not raw:
+                print(f"CryptoCompare returned 0 rows for {symbol}/{tsym}")
+                continue
+
+            result = []
+            for c in raw:
+                try:
+                    t  = int(c['time'])
+                    o  = float(c['open'])
+                    h  = float(c['high'])
+                    l  = float(c['low'])
+                    cl = float(c['close'])
+                    v  = float(c.get('volumefrom', c.get('volumeto', 0.0)))
+                    if cl <= 0 or h < l or v < 0:
+                        continue
+                    result.append({'t': t, 'o': o, 'h': h, 'l': l, 'c': cl, 'v': v})
+                except (KeyError, ValueError, TypeError):
+                    continue
+
+            # Drop last row — current incomplete candle distorts ADX, beta, vol z-score
+            complete = result[:-1] if len(result) > 1 else result
+            print(f"  {symbol}/{tsym}: {len(complete)} complete candles")
+            if complete:
+                return complete
+
+        return []
     except Exception as e:
         print(f"get_candles error {symbol}: {e}")
         return []
